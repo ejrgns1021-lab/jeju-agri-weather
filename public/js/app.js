@@ -16,7 +16,8 @@ const PREFS_KEY = "jeju-weather-prefs";
 const MAX_DAYS = 366;
 
 const $ = (id) => document.getElementById(id);
-const state = { result: null, layout: "all" };
+const DEFAULT_LAYOUT = "combined"; // 기본 표 구성: 한 칸에 편차 (비율%)
+const state = { result: null, layout: DEFAULT_LAYOUT };
 
 // ---------------------------------------------------------------- 공통
 const storage = {
@@ -269,6 +270,7 @@ function tableBlock(tbl, title, caption) {
 function renderComparison() {
   const res = state.result;
   const p = res.params;
+  if (!res.comparison[state.layout]) state.layout = DEFAULT_LAYOUT;
   const tbl = res.comparison[state.layout];
   const caption = `제주 지역 기상 현황 (${fmtDate(p.start)}~${fmtDate(p.end)})`;
   $("cmp-table").replaceChildren(tableBlock(tbl, `제주기상비교표_${compact(p.start)}_${compact(p.end)}`, caption));

@@ -76,5 +76,6 @@ firebase emulators:start --only functions,hosting
 백엔드 검사: `cd functions && python3 tests/test_backend.py`
 
 ## 변경 내역
+- **v6.1**: 비교표 기본 구성을 "한 칸에 편차 (비율%)"로 변경 (버튼도 맨 앞으로)
 - **v6**: Streamlit → Firebase(Hosting + Cloud Functions + Firestore)로 전환, 화면·백엔드 분리, 풍속 지표 제거, 과거 연도 병렬 조회, 확정 자료 Firestore 저장
 - **v5**: 전년 자료·전년 대비 열, 3종 비율(%) 열, 표 열 구성 즉시 전환
