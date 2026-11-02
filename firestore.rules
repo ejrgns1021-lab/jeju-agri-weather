@@ -1,0 +1,10 @@
+rules_version = '2';
+// 앱(Cloud Run)은 서버용 서비스 계정으로 Firestore 에 접근하므로 이 규칙의 영향을 받지 않습니다.
+// 브라우저 등 외부 클라이언트의 직접 접근은 모두 막습니다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

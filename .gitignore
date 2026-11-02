@@ -1,5 +1,19 @@
-.streamlit/secrets.toml
+# 파이썬
 __pycache__/
 *.pyc
 .venv/
+functions/venv/
+
+# 비밀값 (로컬 에뮬레이터용)
+functions/.secret.local
+functions/.env.local
+.streamlit/secrets.toml
+
+# Firebase
+.firebase/
+.firebaserc
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
 *.csv

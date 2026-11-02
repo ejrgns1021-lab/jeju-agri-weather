@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-api_handler.py
+kma_api.py  (백엔드)
 기상청 ASOS 일자료 API 호출 · 응답 파싱 · 캐싱 모듈
 
 지원 데이터 소스
@@ -23,17 +23,9 @@ import numpy as np
 import pandas as pd
 import requests
 
-try:  # Streamlit 환경이면 st.cache_data 사용, 아니면(단위 테스트 등) 무시
-    import streamlit as st
+from . import store as fsc
 
-    cache_data = st.cache_data
-except Exception:  # pragma: no cover
-
-    def cache_data(*_args: Any, **_kwargs: Any):
-        def _deco(func):
-            return func
-
-        return _deco
+cache_data = fsc.memo_cache  # 같은 서버 인스턴스 안에서의 단기 메모리 캐시
 
 
 # ---------------------------------------------------------------------
@@ -77,11 +69,6 @@ METRICS: Dict[str, Dict[str, Any]] = {
                  "norm": ["SS_DUR", "SS_DAY", "SS", "SS_SUM", "SS_NORM", "SS_HR", "SUN", "sumSsHr"],
                  "desc_in": [["일조", "합"], ["일조", "시간"], ["일조"]],
                  "desc_ex": ["가조", "캄벨", "시각", "일사", "편차", "율", "%"]},
-    "풍속": {"col": "avgWs", "unit": "m/s", "agg": "mean", "kind": "wind",
-            "daily": ["WS_AVG", "avgWs", "WS", "WSPD", "AVG_WS", "WS_MEAN"],
-            "norm": ["WS_AVG", "WS", "WSPD", "WS_NORM", "AVG_WS", "WS_MEAN", "avgWs"],
-            "desc_in": [["평균", "풍속"], ["풍속"]],
-            "desc_ex": ["최대", "순간", "시각", "풍정", "편차", "풍향", "습도"]},
 }
 METRIC_COLS: List[str] = [m["col"] for m in METRICS.values()]
 BASE_COLS: List[str] = ["date", "stn_id", "stn_name"]
@@ -163,7 +150,6 @@ def clean_numeric(series: pd.Series, kind: str) -> pd.Series:
       - 공백 / '-' / 'null' / 'None' / 변환 불가 문자열 -> NaN
       - 기상청 결측 코드 -9, -99, -999 (및 소수 표기) -> NaN
       - 기온(kind='temp')  : -50℃ 이하 또는 60℃ 이상 -> NaN
-      - 풍속(kind='wind')  : 음수 또는 45 m/s 초과 -> NaN (상대습도 66% 등 오매칭 차단)
       - 일조(kind='sun')   : 음수 또는 16 hr/일 초과 -> NaN
       - 강수(kind='rain')  : 음수 또는 1500 mm/일 초과 -> NaN
       - 기타 비음수        : 음수 -> NaN
@@ -177,8 +163,6 @@ def clean_numeric(series: pd.Series, kind: str) -> pd.Series:
     num = num.mask(missing_codes, np.nan)
     if kind == "temp":
         num = num.mask((num <= -50.0) | (num >= 60.0), np.nan)
-    elif kind == "wind":
-        num = num.mask((num < 0.0) | (num > 45.0), np.nan)
     elif kind == "sun":
         num = num.mask((num < 0.0) | (num > 16.0), np.nan)
     elif kind == "rain":
@@ -570,7 +554,7 @@ def _detect_text_error(text: str) -> Optional[str]:
 def standardize_daily(raw: pd.DataFrame, source: str, stn_default: int,
                       rain_missing_as_zero: bool = True,
                       legend: Optional[Dict[str, str]] = None) -> pd.DataFrame:
-    """원시 응답 -> [date, stn_id, stn_name, avgTa, maxTa, minTa, sumRn, sumSsHr, avgWs]
+    """원시 응답 -> [date, stn_id, stn_name, avgTa, maxTa, minTa, sumRn, sumSsHr]
     df.attrs["mapping"] 에 {지표명: 사용한 원본 컬럼 또는 None} 을 기록."""
     if raw is None or raw.empty:
         return empty_daily_frame()
@@ -624,11 +608,6 @@ def _score_daily(std: pd.DataFrame) -> float:
     score += 2.0 * float(ok.sum())
     bad = (std["minTa"] > std["maxTa"]) | (std["minTa"] > std["avgTa"]) | (std["avgTa"] > std["maxTa"])
     score -= 8.0 * float(bad.sum())
-    # 풍속 평균이 20 m/s 를 넘으면 상대습도(HM)·풍정(WR) 등 오매핑일 가능성이 높으므로 감점
-    if std["avgWs"].notna().any():
-        ws_mean = float(std["avgWs"].mean())
-        if ws_mean > 20.0:
-            score -= 50.0
     return score
 
 
@@ -670,7 +649,7 @@ def parse_daily_text_best(text: str, stn_default: int, rain_missing_as_zero: boo
 
 
 # ---------------------------------------------------------------------
-# 일자료 조회 (소스별) - st.cache_data 적용
+# 일자료 조회 (소스별) - 메모리 캐시 + Firestore 저장
 # ---------------------------------------------------------------------
 def fetch_apihub_daily_text(stn_id: int, start_ymd: str, end_ymd: str, api_key: str) -> str:
     """일자료 API 원문 텍스트 (캐시 없음, 진단용)"""
@@ -679,9 +658,13 @@ def fetch_apihub_daily_text(stn_id: int, start_ymd: str, end_ymd: str, api_key: 
     return decode_bytes(resp.content)
 
 
-@cache_data(ttl=6 * 3600, show_spinner=False)
+@cache_data(ttl=6 * 3600)
 def fetch_apihub_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
                        rain_missing_as_zero: bool = True) -> pd.DataFrame:
+    cache_key = ("apihub", stn_id, start_ymd, end_ymd, int(rain_missing_as_zero))
+    cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key)
+    if cached is not None:
+        return cached
     text = fetch_apihub_daily_text(stn_id, start_ymd, end_ymd, api_key)
     std, _diag = parse_daily_text_best(text, stn_id, rain_missing_as_zero, DEFAULT_DAILY_COLS)
     if std.empty:
@@ -689,12 +672,18 @@ def fetch_apihub_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
         if err:
             raise WeatherApiError(f"API허브 응답 오류: {err}")
         return empty_daily_frame()
+    if fsc.is_finalized(end_ymd):
+        fsc.put_df(fsc.DAILY_COLLECTION, std, *cache_key, meta={"stn_id": stn_id, "start": start_ymd, "end": end_ymd})
     return std
 
 
-@cache_data(ttl=6 * 3600, show_spinner=False)
+@cache_data(ttl=6 * 3600)
 def fetch_datagokr_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
                          rain_missing_as_zero: bool = True) -> pd.DataFrame:
+    cache_key = ("datagokr", stn_id, start_ymd, end_ymd, int(rain_missing_as_zero))
+    cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key)
+    if cached is not None:
+        return cached
     key = urllib.parse.unquote(api_key) if "%" in api_key else api_key
     items: List[Dict[str, Any]] = []
     page = 1
@@ -726,7 +715,10 @@ def fetch_datagokr_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str
     if not items:
         return empty_daily_frame()
     raw = pd.DataFrame(items)
-    return standardize_daily(raw, "datagokr", stn_id, rain_missing_as_zero)
+    std = standardize_daily(raw, "datagokr", stn_id, rain_missing_as_zero)
+    if fsc.is_finalized(end_ymd):
+        fsc.put_df(fsc.DAILY_COLLECTION, std, *cache_key, meta={"stn_id": stn_id, "start": start_ymd, "end": end_ymd})
+    return std
 
 
 def split_period(start: dt.date, end: dt.date, max_days: int = MAX_DAYS_PER_CALL) -> List[Tuple[dt.date, dt.date]]:
@@ -780,8 +772,6 @@ def fetch_all_stations(start: dt.date, end: dt.date, api_key: str, source: str =
 def _validate_normal_series(series: pd.Series, kind: str) -> pd.Series:
     """
     평년값(1991~2020 30년 평균) 물리적 유효성 검증.
-    - 평년 일평균 풍속(wind)은 국내 전 지점에서 0.2 ~ 15.0 m/s 범위이다.
-      열 밀림으로 상대습도(HM, 50~85%)나 풍향(WD)이 매핑된 경우(평균 > 15.0) 즉시 NaN 처리한다.
     - 평년 일조시간(sun)은 0.5 ~ 14.0 hr/일 범위이다.
     """
     cleaned = clean_numeric(series, kind)
@@ -789,8 +779,6 @@ def _validate_normal_series(series: pd.Series, kind: str) -> pd.Series:
     if valid.empty:
         return cleaned
     mean_val = float(valid.mean())
-    if kind == "wind" and (mean_val > 15.0 or mean_val < 0.1):
-        return pd.Series(np.nan, index=series.index, dtype=float)
     if kind == "sun" and (mean_val > 14.5 or mean_val < 0.1):
         return pd.Series(np.nan, index=series.index, dtype=float)
     if kind == "temp" and (mean_val > 38.0 or mean_val < -25.0):
@@ -903,8 +891,13 @@ def parse_normals_text_best(text: str, station_ids: Optional[List[int]] = None) 
     return best_norm, diag
 
 
-@cache_data(ttl=24 * 3600, show_spinner=False)
+@cache_data(ttl=24 * 3600)
 def fetch_apihub_normals_raw(mm1: int, dd1: int, mm2: int, dd2: int, api_key: str, tmst: int = 2021) -> Tuple[pd.DataFrame, str]:
+    # 평년값(1991~2020)은 바뀌지 않으므로 Firestore 에 저장해 재사용 (원문 텍스트는 저장하지 않음)
+    cache_key = ("normals", tmst, f"{mm1:02d}{dd1:02d}", f"{mm2:02d}{dd2:02d}")
+    cached = fsc.get_df(fsc.NORMALS_COLLECTION, *cache_key)
+    if cached is not None:
+        return cached, ""
     params = {"norm": "D", "tmst": str(tmst), "stn": "0", "MM1": str(mm1), "DD1": str(dd1),
               "MM2": str(mm2), "DD2": str(dd2), "help": "1", "authKey": api_key}
     resp = _http_get(APIHUB_NORMAL_URL, params)
@@ -914,6 +907,8 @@ def fetch_apihub_normals_raw(mm1: int, dd1: int, mm2: int, dd2: int, api_key: st
         err = _detect_text_error(text)
         if err:
             raise WeatherApiError(f"평년값 API 응답 오류: {err}")
+    else:
+        fsc.put_df(fsc.NORMALS_COLLECTION, norm_df, *cache_key)
     return norm_df, text
 
 

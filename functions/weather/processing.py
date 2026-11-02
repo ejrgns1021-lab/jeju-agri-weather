@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-data_processor.py
+processing.py  (백엔드)
 Pandas 데이터 가공 모듈
   - 4개 지점 일별 자료 -> 결측 지점 제외 '제주 전체 일일 평균값'
-  - 기간 집계 (기온·풍속 = 평균, 누적 강수량·일조 시간 = 합산)
+  - 기간 집계 (기온 = 평균, 누적 강수량·일조 시간 = 합산)
   - 해당 연도 / 전년 / 최근 5년 평균 / 평년(1991~2020) 평균 비교표
   - 표시 자릿수(소수 첫째 자리) 기준 편차(대비) 및 대비 비율(%) 산출 (표시 숫자와 검산 결과 100% 일치)
-  - 평균기온·최고기온·최저기온·누적강수량·일조시간(및 풍속) 전년도 대비(비율), 최근5년평균대비(비율), 평년대비(비율) 산출
+  - 평균기온·최고기온·최저기온·누적강수량·일조시간 전년도 대비(비율), 최근5년평균대비(비율), 평년대비(비율) 산출
   - 한글(HWP) 보고서용 표 포맷
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from api_handler import METRICS, METRIC_COLS, STATIONS, STATION_NAMES
+from .kma_api import METRICS, METRIC_COLS, STATIONS, STATION_NAMES
 
 NORMAL_START_YEAR = 1991
 NORMAL_END_YEAR = 2020
@@ -191,7 +191,7 @@ def _calc_ratio(num: float, den: float, allow: bool, decimals: int = 1) -> float
 
 def build_comparison_table(current: Dict[str, float], recent: Dict[str, float], normal: Dict[str, float],
                            metric_names: List[str], current_year: int, extreme: bool = False,
-                           decimals: int = 1, ratio_all: bool = True,
+                           decimals: int = 1,
                            prev: Optional[Dict[str, float]] = None) -> pd.DataFrame:
     """
     보고서용 비교표 (수치형).
@@ -201,8 +201,7 @@ def build_comparison_table(current: Dict[str, float], recent: Dict[str, float], 
       전년도 대비(비율) / 최근5년평균대비(비율) / 평년대비(비율)
     - 표에 출력되는 숫자(소수 decimals 자리 반올림값)를 기준으로 편차(대비)와 비율(%)을 산출하여,
       보고서 표의 숫자를 그대로 검산했을 때 오차가 발생하지 않도록 한다.
-    - 평균 기온, 최고 기온, 최저 기온, 누적 강수량, 일조 시간은 항상 대비(비율)을 산출하며,
-      ratio_all=True(기본값)이면 풍속을 포함한 모든 지표에 산출한다.
+    - 평균 기온, 최고 기온, 최저 기온, 누적 강수량, 일조 시간 모두 대비(비율)을 산출한다.
     """
     prev_dict = prev or {}
     rows: List[Dict[str, Any]] = []
@@ -220,7 +219,7 @@ def build_comparison_table(current: Dict[str, float], recent: Dict[str, float], 
         d_rec = round(cur - rec, decimals) if not (pd.isna(cur) or pd.isna(rec)) else float("nan")
         d_nor = round(cur - nor, decimals) if not (pd.isna(cur) or pd.isna(nor)) else float("nan")
 
-        allow_ratio = ratio_all or (meta["agg"] == "sum") or (name in ("평균 기온", "최고 기온", "최저 기온"))
+        allow_ratio = True
         r_prv = _calc_ratio(cur, prv, allow_ratio, decimals)
         r_rec = _calc_ratio(cur, rec, allow_ratio, decimals)
         r_nor = _calc_ratio(cur, nor, allow_ratio, decimals)
