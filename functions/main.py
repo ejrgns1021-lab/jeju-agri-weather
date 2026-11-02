@@ -37,7 +37,7 @@ def _fail(code: https_fn.FunctionsErrorCode, message: str) -> https_fn.HttpsErro
     return https_fn.HttpsError(code=code, message=message)
 
 
-@https_fn.on_call(secrets=[APP_PASSWORD], memory=options.MemoryOption.MB_256, timeout_sec=30)
+@https_fn.on_call(secrets=[APP_PASSWORD], invoker="public", memory=options.MemoryOption.MB_256, timeout_sec=30)
 def login(req: https_fn.CallableRequest) -> Dict[str, Any]:
     data = req.data or {}
     expected = APP_PASSWORD.value or ""
@@ -51,7 +51,7 @@ def login(req: https_fn.CallableRequest) -> Dict[str, Any]:
     return {"token": token, "expiresAt": exp}
 
 
-@https_fn.on_call(secrets=[APP_PASSWORD, KMA_API_KEY], memory=options.MemoryOption.GB_1,
+@https_fn.on_call(secrets=[APP_PASSWORD, KMA_API_KEY], invoker="public", memory=options.MemoryOption.GB_1,
                   timeout_sec=540, concurrency=4, cpu=1)
 def analyze(req: https_fn.CallableRequest) -> Dict[str, Any]:
     data = req.data or {}
