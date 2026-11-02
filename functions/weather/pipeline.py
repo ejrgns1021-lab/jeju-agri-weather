@@ -47,11 +47,11 @@ MAX_PERIOD_DAYS = 366
 PREFETCH_WORKERS = 4          # 과거 연도 자료를 동시에 받아오는 개수 (기상청 서버 부담 고려)
 NORMAL_MODES = ("api", "compute", "skip")
 SOURCES = ("apihub", "datagokr")
-LAYOUTS = {
+LAYOUTS = {   # 첫 번째 항목이 화면의 기본 표 구성
+    "combined": "한 칸에 편차 (비율%)",
     "all": "편차 + 비율 모두 표시",
     "grouped": "기준별 편차·비율 나란히",
     "ratio_only": "대비(비율%) 열만",
-    "combined": "한 칸에 편차 (비율%)",
 }
 
 
