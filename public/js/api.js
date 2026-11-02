@@ -40,7 +40,7 @@ export async function callFunction(name, data) {
       body: JSON.stringify({ data }),
     });
   } catch (e) {
-    throw new ApiError("서버에 연결할 수 없습니다. 인터넷 연결을 확인해 주세요.", "UNAVAILABLE");
+    throw new ApiError("서버에 연결할 수 없습니다. 인터넷 연결을 확인하고, 브라우저의 광고·추적 차단 기능이 켜져 있다면 이 사이트에서 꺼 주세요.", "UNAVAILABLE");
   }
   let body = null;
   try {
@@ -54,4 +54,5 @@ export async function callFunction(name, data) {
 }
 
 export const login = (password) => callFunction("login", { password });
-export const analyze = (token, query) => callFunction("analyze", { token, query });
+// 함수 이름에 analyze/analytics/track 등이 들어가면 광고·추적 차단기가 요청을 막으므로 중립적인 이름 사용
+export const analyze = (token, query) => callFunction("jejuweather", { token, query });

@@ -22,7 +22,7 @@
 | `public/js/icons.js` | 화면 아이콘(Lucide, SVG 코드 내장 — 이미지 파일 없음) |
 | `public/js/tables.js` | 표 그리기, 한글용 복사(HTML 표), 탭 텍스트 복사, CSV 저장 |
 | `public/css/style.css` | 디자인 (모바일·다크 모드 대응) |
-| `functions/main.py` | 백엔드 진입점: `login`(비밀번호 → 접속 토큰), `analyze`(조회·가공) |
+| `functions/main.py` | 백엔드 진입점: `login`(비밀번호 → 접속 토큰), `jejuweather`(조회·가공) |
 | `functions/weather/kma_api.py` | 기상청 API 호출, 응답 파싱, 결측 처리 |
 | `functions/weather/processing.py` | 4개 지점 평균, 기간 집계, 비교표·비율 산출, 보고서 포맷 |
 | `functions/weather/pipeline.py` | 조회 조건 검증 → 전체 계산 → 화면용 표(JSON) 묶음 |
@@ -77,6 +77,7 @@ firebase emulators:start --only functions,hosting
 백엔드 검사: `cd functions && python3 tests/test_backend.py`
 
 ## 변경 내역
+- **v6.3**: 조회 함수 이름 `analyze` → `jejuweather` (브라우저 광고·추적 차단기가 'analyze' 주소를 막아 "서버에 연결할 수 없습니다"가 뜨던 문제 해결). 계산 로직 변경 없음
 - **v6.2**: 화면 전면 개편 — 지표별 비교 카드(기준 대비 증감·비율 막대), 모바일 바텀 시트 조회 조건·상단 요약 바·원탭 조회, Lucide 아이콘(코드 내장), 차분한 그린/블루 톤. 백엔드·계산·API 호출 코드는 변경 없음
 - **v6.1**: 비교표 기본 구성을 "한 칸에 편차 (비율%)"로 변경 (버튼도 맨 앞으로)
 - **v6**: Streamlit → Firebase(Hosting + Cloud Functions + Firestore)로 전환, 화면·백엔드 분리, 풍속 지표 제거, 과거 연도 병렬 조회, 확정 자료 Firestore 저장
