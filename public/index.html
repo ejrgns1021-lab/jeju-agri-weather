@@ -2,119 +2,158 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>제주도 농업 기상 분석</title>
-  <meta name="description" content="기상청 ASOS 제주 4개 지점 자료로 해당 연도·전년·최근 5년·평년을 비교합니다.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2e6a4f">
+  <title>제주 농업 기상 분석</title>
+  <meta name="description" content="기상청 ASOS 제주 4개 지점 자료로 해당 연도·전년·최근 5년·평년 기상을 비교해 작물 생육 환경을 분석합니다.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232e6a4f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M7 20h10'/><path d='M10 20c5.5-2.5.8-6.4 3-10'/><path d='M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z'/><path d='M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z'/></svg>">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <link rel="stylesheet" href="css/style.css">
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
-  <!-- 로그인 화면 -->
+  <!-- ============================ 로그인 ============================ -->
   <section id="login-view" class="login-view" hidden>
     <form id="login-form" class="login-card" autocomplete="off">
-      <div class="brand-mark" aria-hidden="true">🌾</div>
-      <h1>제주도 농업 기상 분석</h1>
-      <p class="muted">대시보드에 접근하려면 비밀번호를 입력하세요.</p>
+      <div class="login-badge"><i data-icon="sprout"></i></div>
+      <h1>제주 농업 기상 분석</h1>
+      <p class="muted">작물 생육 환경 비교를 위한 기상 자료 대시보드</p>
       <label class="field">
-        <span>비밀번호</span>
-        <input id="login-password" type="password" required autocomplete="current-password">
+        <span><i data-icon="lock" class="ic-sm"></i> 비밀번호</span>
+        <input id="login-password" type="password" required autocomplete="current-password" placeholder="비밀번호 입력">
       </label>
       <p id="login-error" class="form-error" role="alert"></p>
-      <button id="login-btn" type="submit" class="btn primary wide">로그인</button>
+      <button id="login-btn" type="submit" class="btn primary wide lg">로그인</button>
+      <p class="login-foot">기상청 ASOS · 제주 · 고산 · 성산 · 서귀포</p>
     </form>
   </section>
 
-  <!-- 메인 화면 -->
+  <!-- ============================ 메인 ============================ -->
   <div id="app-view" class="app" hidden>
     <header class="topbar">
-      <div class="topbar-title">
-        <span aria-hidden="true">🌾</span>
-        <div>
-          <strong>제주도 농업 기상 분석</strong>
-          <small>기상청 ASOS · 제주(184) 고산(185) 성산(188) 서귀포(189)</small>
+      <div class="brand">
+        <span class="brand-mark"><i data-icon="sprout"></i></span>
+        <div class="brand-text">
+          <strong>제주 농업 기상 분석</strong>
+          <small>작물 생육 환경 비교 · 기상청 ASOS 4개 지점</small>
         </div>
       </div>
-      <div class="topbar-actions">
-        <button id="toggle-settings" type="button" class="btn ghost only-mobile">조회 설정</button>
-        <button id="logout-btn" type="button" class="btn ghost">로그아웃</button>
-      </div>
+      <button id="logout-btn" type="button" class="icon-btn" aria-label="로그아웃" title="로그아웃"><i data-icon="log-out"></i></button>
     </header>
 
+    <!-- 모바일: 현재 조회 조건 요약 + 바로 조회 -->
+    <div class="cond-bar">
+      <button id="toggle-settings" type="button" class="cond-summary" aria-controls="settings">
+        <i data-icon="calendar"></i>
+        <span id="cond-summary-text">조회 조건</span>
+        <i data-icon="sliders" class="cond-edit"></i>
+      </button>
+      <button id="quick-query" type="button" class="btn primary"><i data-icon="search"></i>조회</button>
+    </div>
+
     <div class="layout">
-      <!-- 조회 설정 -->
-      <aside id="settings" class="settings">
+      <!-- 조회 설정 (데스크톱: 왼쪽 패널, 모바일: 아래에서 올라오는 시트) -->
+      <aside id="settings" class="settings" aria-label="조회 조건">
+        <div class="sheet-head">
+          <span class="sheet-grip" aria-hidden="true"></span>
+          <h2><i data-icon="sliders"></i> 조회 조건</h2>
+          <button id="close-settings" type="button" class="icon-btn" aria-label="닫기"><i data-icon="x"></i></button>
+        </div>
         <form id="query-form">
-          <fieldset>
-            <legend>기간</legend>
-            <div class="date-row">
-              <label class="field"><span>시작일</span><input id="start" type="date" required></label>
-              <label class="field"><span>종료일</span><input id="end" type="date" required></label>
-            </div>
-            <div class="chips" id="quick-ranges"></div>
-          </fieldset>
+          <div class="sheet-body">
+            <fieldset class="group">
+              <legend><i data-icon="calendar"></i> 분석 기간</legend>
+              <div class="date-row">
+                <label class="field"><span>시작일</span><input id="start" type="date" required></label>
+                <label class="field"><span>종료일</span><input id="end" type="date" required></label>
+              </div>
+              <div class="chips" id="quick-ranges"></div>
+            </fieldset>
 
-          <fieldset>
-            <legend>지표</legend>
-            <div id="metric-list" class="check-list"></div>
-          </fieldset>
+            <fieldset class="group">
+              <legend><i data-icon="bar-chart"></i> 기상 지표</legend>
+              <div id="metric-list" class="toggle-grid"></div>
+            </fieldset>
 
-          <fieldset>
-            <legend>관측 지점</legend>
-            <div id="station-list" class="check-list cols-2"></div>
-          </fieldset>
+            <fieldset class="group">
+              <legend><i data-icon="map-pin"></i> 관측 지점</legend>
+              <div id="station-list" class="toggle-grid cols-2"></div>
+            </fieldset>
 
-          <fieldset>
-            <legend>평년(1991~2020) 산출 방식</legend>
-            <div id="normal-list" class="radio-list"></div>
-          </fieldset>
+            <fieldset class="group">
+              <legend><i data-icon="history"></i> 평년(1991~2020) 산출</legend>
+              <div id="normal-list" class="option-list"></div>
+            </fieldset>
 
-          <fieldset>
-            <legend>옵션</legend>
-            <label class="switch"><input id="extreme" type="checkbox"><span>최고·최저 기온을 기간 극값으로 표시</span></label>
-            <label class="switch"><input id="rain-zero" type="checkbox" checked><span>기온 관측일의 강수 결측을 0mm로 간주 <em>(권장)</em></span></label>
-          </fieldset>
+            <details class="group advanced">
+              <summary><i data-icon="layers"></i> 고급 옵션 <i data-icon="chevron-down" class="chev"></i></summary>
+              <div class="advanced-body">
+                <label class="switch"><input id="extreme" type="checkbox"><span class="switch-ui"></span><span>최고·최저 기온을 기간 극값으로 표시</span></label>
+                <label class="switch"><input id="rain-zero" type="checkbox" checked><span class="switch-ui"></span><span>기온 관측일의 강수 결측을 0mm로 간주 <em>권장</em></span></label>
+                <p class="sub-legend"><i data-icon="database" class="ic-sm"></i> 데이터 소스</p>
+                <div id="source-list" class="option-list compact"></div>
+              </div>
+            </details>
 
-          <fieldset>
-            <legend>데이터 소스</legend>
-            <div id="source-list" class="radio-list"></div>
-          </fieldset>
-
-          <ul id="form-warnings" class="form-warnings"></ul>
-          <button id="query-btn" type="submit" class="btn primary wide">데이터 조회</button>
+            <ul id="form-warnings" class="form-warnings"></ul>
+          </div>
+          <div class="sheet-foot">
+            <button id="query-btn" type="submit" class="btn primary wide lg"><i data-icon="search"></i>데이터 조회</button>
+          </div>
         </form>
       </aside>
+      <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
 
       <!-- 결과 -->
       <main class="content">
-        <h2 id="period-title" class="period-title"></h2>
-        <div id="notices"></div>
+        <div class="period-hero">
+          <span class="eyebrow"><i data-icon="calendar" class="ic-sm"></i> 분석 기간</span>
+          <h2 id="period-title" class="period-title"></h2>
+        </div>
+        <div id="notices" class="notices"></div>
 
         <section id="welcome" class="card welcome">
-          <h3>사용 방법</h3>
-          <p>왼쪽에서 기간과 지표를 고른 뒤 <strong>데이터 조회</strong>를 누르세요.</p>
-          <table class="legend-table">
-            <tr><th>해당 연도 / 전년</th><td>선택 기간 및 직전 해 동일 기간의 제주 전체(4개 지점 평균) 값</td></tr>
-            <tr><th>최근 5년 평균</th><td>직전 5개년 동일 기간 값의 평균</td></tr>
-            <tr><th>평년 평균</th><td>1991~2020년 평년값 기준 동일 기간 값</td></tr>
-            <tr><th>~ 대비</th><td>해당 연도 − 비교 기준값 (편차)</td></tr>
-            <tr><th>~ 대비(비율)</th><td>해당 연도 ÷ 비교 기준값 × 100 (%)</td></tr>
-          </table>
+          <div class="welcome-head">
+            <span class="welcome-icon"><i data-icon="leaf"></i></span>
+            <div>
+              <h3>과거 기상과 작물 생육을 비교해 보세요</h3>
+              <p class="muted">특정 시기의 기온·강수·일조가 예년과 얼마나 달랐는지 한눈에 확인할 수 있습니다.</p>
+            </div>
+          </div>
+          <ol class="steps">
+            <li><b>1</b><span><strong>기간 선택</strong> 파종·개화·수확 등 생육 단계에 맞춰 기간을 고릅니다.</span></li>
+            <li><b>2</b><span><strong>조회</strong> 해당 연도와 전년·최근 5년·평년 값을 함께 불러옵니다.</span></li>
+            <li><b>3</b><span><strong>비교</strong> 지표 카드에서 차이를 확인하고, 표는 한글 보고서에 바로 붙여넣습니다.</span></li>
+          </ol>
+          <button id="welcome-start" type="button" class="btn primary wide only-mobile"><i data-icon="sliders"></i>조회 조건 설정</button>
+          <dl class="legend">
+            <div><dt>해당 연도 / 전년</dt><dd>선택 기간 및 직전 해 동일 기간의 제주 전체(4개 지점 평균) 값</dd></div>
+            <div><dt>최근 5년 평균</dt><dd>직전 5개년 동일 기간 값의 평균</dd></div>
+            <div><dt>평년 평균</dt><dd>1991~2020년 평년값 기준 동일 기간 값</dd></div>
+            <div><dt>편차 / 비율</dt><dd>해당 연도 − 기준값 / 해당 연도 ÷ 기준값 × 100(%)</dd></div>
+          </dl>
         </section>
 
-        <section id="results" hidden>
+        <section id="results" class="results" hidden>
           <div id="summary" class="summary"></div>
+
+          <section class="block">
+            <div class="block-head">
+              <h3><i data-icon="leaf"></i> 핵심 기상 지표</h3>
+              <p class="muted small">제주 전체(4개 지점 평균) · 기준값과의 차이</p>
+            </div>
+            <div id="metric-cards" class="metric-grid"></div>
+          </section>
 
           <section class="card">
             <div class="card-head">
-              <h3>1. 제주 전체(4개 지점 평균) 기상 비교표</h3>
+              <h3><i data-icon="table"></i> 기상 비교표</h3>
+              <p id="cmp-caption" class="muted small"></p>
             </div>
-            <p id="cmp-caption" class="muted small"></p>
             <div id="layout-switch" class="segmented" role="tablist" aria-label="표 열 구성"></div>
             <div id="cmp-table"></div>
             <details class="basis">
-              <summary>산출 근거 (유효 일수·연수)</summary>
+              <summary><i data-icon="info" class="ic-sm"></i> 산출 근거 (유효 일수·연수) <i data-icon="chevron-down" class="chev"></i></summary>
               <div id="basis-table"></div>
               <p id="basis-note" class="muted small"></p>
             </details>
@@ -122,10 +161,10 @@
 
           <section class="card">
             <div class="tabs" role="tablist">
-              <button type="button" class="tab active" data-tab="station">2. 지점별 요약</button>
-              <button type="button" class="tab" data-tab="daily">3. 일별 자료</button>
-              <button type="button" class="tab" data-tab="yearly">4. 연도별 동기간</button>
-              <button type="button" class="tab" data-tab="diag">5. 진단</button>
+              <button type="button" class="tab active" data-tab="station"><i data-icon="map-pin" class="ic-sm"></i>지점별</button>
+              <button type="button" class="tab" data-tab="daily"><i data-icon="calendar" class="ic-sm"></i>일별</button>
+              <button type="button" class="tab" data-tab="yearly"><i data-icon="history" class="ic-sm"></i>연도별 동기간</button>
+              <button type="button" class="tab" data-tab="diag"><i data-icon="file-text" class="ic-sm"></i>진단</button>
             </div>
             <div class="tab-panel" data-panel="station"><div id="station-table"></div></div>
             <div class="tab-panel" data-panel="daily" hidden>
