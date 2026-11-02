@@ -2,6 +2,7 @@
 // 계산은 모두 백엔드(functions/)에서 하고, 여기서는 받은 표를 보여주기만 합니다.
 import { analyze, login, ApiError } from "./api.js";
 import { buildTable, copyForHwp, copyText, downloadCsv, toTsv } from "./tables.js";
+import { icon, hydrateIcons } from "./icons.js";
 
 const METRICS = ["평균 기온", "최고 기온", "최저 기온", "누적 강수량", "일조 시간"];
 const STATIONS = { 제주: 184, 고산: 185, 성산: 188, 서귀포: 189 };
@@ -11,6 +12,15 @@ const NORMAL_MODES = [
   ["skip", "평년 비교 생략", ""],
 ];
 const SOURCES = [["apihub", "기상청 API허브"], ["datagokr", "공공데이터포털"]];
+// 화면 표시용: 지표별 아이콘·색상 계열 (계산과 무관)
+const METRIC_VIEW = {
+  "평균 기온": { icon: "thermometer", kind: "temp", tone: "avg", primary: "diff" },
+  "최고 기온": { icon: "thermometer-sun", kind: "temp", tone: "max", primary: "diff" },
+  "최저 기온": { icon: "thermometer-snowflake", kind: "temp", tone: "min", primary: "diff" },
+  "누적 강수량": { icon: "cloud-rain", kind: "rain", tone: "rain", primary: "ratio" },
+  "일조 시간": { icon: "sun", kind: "sun", tone: "sun", primary: "ratio" },
+};
+const MOBILE = "(max-width: 900px)";
 const TOKEN_KEY = "jeju-weather-token";
 const PREFS_KEY = "jeju-weather-prefs";
 const MAX_DAYS = 366;
@@ -40,6 +50,10 @@ function daysBetween(a, b) {
 }
 function fmtDate(iso, sep = ".") { return iso.replaceAll("-", sep); }
 function compact(iso) { return iso.replaceAll("-", ""); }
+// 화면 표시용 짧은 기간 표기 (같은 해면 연도 생략: 2026.10.27~11.02)
+function shortRange(a, b) {
+  return a.slice(0, 4) === b.slice(0, 4) ? `${fmtDate(a)}~${fmtDate(b).slice(5)}` : `${fmtDate(a)}~${fmtDate(b)}`;
+}
 
 let toastTimer;
 function toast(msg) {
@@ -136,24 +150,26 @@ function buildSettings() {
   })));
 
   const selMetrics = prefs.metrics || METRICS;
-  $("metric-list").replaceChildren(...METRICS.map((m) => el("label", { class: "check" },
+  $("metric-list").replaceChildren(...METRICS.map((m) => el("label", { class: `toggle tone-${METRIC_VIEW[m].tone}` },
     el("input", { type: "checkbox", name: "metric", value: m, ...(selMetrics.includes(m) ? { checked: "" } : {}) }),
-    el("span", { text: m }))));
+    el("span", { class: "toggle-ui" }, icon(METRIC_VIEW[m].icon), el("span", { text: m })))));
 
   const selStations = prefs.stations || Object.keys(STATIONS);
-  $("station-list").replaceChildren(...Object.entries(STATIONS).map(([n, id]) => el("label", { class: "check" },
+  $("station-list").replaceChildren(...Object.entries(STATIONS).map(([n, id]) => el("label", { class: "toggle" },
     el("input", { type: "checkbox", name: "station", value: n, ...(selStations.includes(n) ? { checked: "" } : {}) }),
-    el("span", { text: `${n}(${id})` }))));
+    el("span", { class: "toggle-ui" }, icon("map-pin"), el("span", { text: n }), el("small", { text: String(id) })))));
 
   const normal = prefs.normalMode || "api";
-  $("normal-list").replaceChildren(...NORMAL_MODES.map(([v, label, hint]) => el("label", { class: "radio" },
+  $("normal-list").replaceChildren(...NORMAL_MODES.map(([v, label, hint]) => el("label", { class: "option" },
     el("input", { type: "radio", name: "normal", value: v, ...(v === normal ? { checked: "" } : {}) }),
-    el("span", { text: label }, hint ? el("em", { text: ` ${hint}` }) : null))));
+    el("span", { class: "option-ui" }, el("span", { class: "option-dot" }),
+      el("span", { class: "option-text" }, el("strong", { text: label }), hint ? el("small", { text: hint }) : null)))));
 
   const source = prefs.source || "apihub";
-  $("source-list").replaceChildren(...SOURCES.map(([v, label]) => el("label", { class: "radio" },
+  $("source-list").replaceChildren(...SOURCES.map(([v, label]) => el("label", { class: "option" },
     el("input", { type: "radio", name: "source", value: v, ...(v === source ? { checked: "" } : {}) }),
-    el("span", { text: label }))));
+    el("span", { class: "option-ui" }, el("span", { class: "option-dot" }),
+      el("span", { class: "option-text" }, el("strong", { text: label }))))));
 
   if (prefs.extreme != null) $("extreme").checked = prefs.extreme;
   if (prefs.rainZero != null) $("rain-zero").checked = prefs.rainZero;
@@ -190,11 +206,15 @@ function validateForm() {
   if (!q.metrics.length) w.push("최소 1개 이상의 지표를 선택해 주세요.");
   if (!q.stations.length) w.push("최소 1개 지점을 선택해 주세요.");
   if (q.normalMode === "api" && q.source !== "apihub") w.push("평년값 API는 기상청 API허브 전용입니다. 다른 평년 산출 방식을 선택하세요.");
-  $("form-warnings").replaceChildren(...w.map((t) => el("li", { text: t })));
+  $("form-warnings").replaceChildren(...w.map((t) => el("li", {}, icon("alert-triangle", "ic-sm"), el("span", { text: t }))));
   $("query-btn").disabled = w.length > 0;
+  $("quick-query").disabled = w.length > 0;
+  $("cond-summary-text").textContent = q.start && q.end && q.start <= q.end
+    ? `${shortRange(q.start, q.end)} · ${daysBetween(q.start, q.end)}일`
+    : "조회 조건을 확인해 주세요";
 
   $("period-title").textContent = q.start && q.end && q.start <= q.end
-    ? `조회 기간 ${fmtDate(q.start)} ~ ${fmtDate(q.end)} · ${q.metrics.join(", ") || "지표 없음"}`
+    ? `${fmtDate(q.start)} ~ ${fmtDate(q.end)}`
     : "조회 기간 오류";
   if (state.result) markStale(q);
   return w.length === 0;
@@ -206,8 +226,8 @@ function markStale(q) {
     JSON.stringify([q.start, q.end, q.metrics, q.stations, q.normalMode, q.source, q.extreme, q.rainZero]);
   $("stale-notice")?.remove();
   if (!same) {
-    $("notices").prepend(el("div", { id: "stale-notice", class: "notice warning",
-      text: "조회 설정이 바뀌었습니다. 아래 결과는 이전 조건 기준입니다. 데이터 조회를 다시 눌러 주세요." }));
+    $("notices").prepend(el("div", { id: "stale-notice", class: "notice warning" }, icon("alert-triangle"),
+      el("span", { text: "조회 설정이 바뀌었습니다. 아래 결과는 이전 조건 기준입니다. 데이터 조회를 다시 눌러 주세요." })));
   }
 }
 
@@ -229,7 +249,7 @@ async function onQuery(ev) {
   if (!validateForm()) return;
   const q = readQuery();
   storage.set(localStorage, PREFS_KEY, JSON.stringify(q));
-  if (matchMedia("(max-width: 900px)").matches) $("settings").classList.remove("open");
+  closeSettings();
   setLoading(true, q.normalMode);
   try {
     const res = await analyze(token(), q);
@@ -248,22 +268,24 @@ async function onQuery(ev) {
 }
 
 // ---------------------------------------------------------------- 결과 표시
+const NOTICE_ICON = { info: "info", warning: "alert-triangle", error: "alert-circle" };
 function renderNotices(list) {
-  $("notices").replaceChildren(...list.map((n) => el("div", { class: `notice ${n.level}`, text: n.text })));
+  $("notices").replaceChildren(...list.map((n) => el("div", { class: `notice ${n.level}` },
+    icon(NOTICE_ICON[n.level] || "info"), el("span", { text: n.text }))));
 }
 
 function tableBlock(tbl, title, caption) {
   if (!tbl) return el("p", { class: "muted", text: "표시할 자료가 없습니다." });
   return el("div", { class: "table-block" },
     el("div", { class: "table-tools" },
-      el("button", { type: "button", class: "btn small", text: "한글용 표 복사",
-        title: "복사 후 한글에서 Ctrl+V 하면 표 모양 그대로 붙습니다",
-        onclick: async () => toast((await copyForHwp(tbl, caption)) ? "표를 복사했습니다. 한글에서 Ctrl+V 하세요." : "복사하지 못했습니다.") }),
-      el("button", { type: "button", class: "btn small ghost", text: "탭 텍스트 복사",
-        title: "한글: 붙여넣기 → 블록 지정 → 표 → 문자열을 표로 (구분: 탭)",
-        onclick: async () => toast((await copyText(toTsv(tbl))) ? "탭 구분 텍스트를 복사했습니다." : "복사하지 못했습니다.") }),
-      el("button", { type: "button", class: "btn small ghost", text: "CSV 저장",
-        onclick: () => downloadCsv(tbl, title) })),
+      el("button", { type: "button", class: "btn small", title: "복사 후 한글에서 Ctrl+V 하면 표 모양 그대로 붙습니다",
+        onclick: async () => toast((await copyForHwp(tbl, caption)) ? "표를 복사했습니다. 한글에서 Ctrl+V 하세요." : "복사하지 못했습니다.") },
+        icon("copy"), el("span", { text: "한글용 표 복사" })),
+      el("button", { type: "button", class: "btn small ghost", title: "한글: 붙여넣기 → 블록 지정 → 표 → 문자열을 표로 (구분: 탭)",
+        onclick: async () => toast((await copyText(toTsv(tbl))) ? "탭 구분 텍스트를 복사했습니다." : "복사하지 못했습니다.") },
+        icon("file-text"), el("span", { text: "탭 텍스트" })),
+      el("button", { type: "button", class: "btn small ghost", onclick: () => downloadCsv(tbl, title) },
+        icon("download"), el("span", { text: "CSV" }))),
     el("div", { class: "table-scroll" }, buildTable(tbl, caption)));
 }
 
@@ -292,13 +314,16 @@ function renderResult(res) {
 
   $("summary").replaceChildren(
     ...[
-      ["조회 기간", `${fmtDate(p.start)} ~ ${fmtDate(p.end)}`, `${s.periodDays}일`],
-      ["자료 확보", `${s.gotDays}일`, `${Math.round((s.gotDays / s.periodDays) * 100)}%`],
-      ["전년 / 최근 5년", `${s.prevYear}년`, `${s.recentRange}년`],
-      ["평년 기준", s.normalNote.split(" (")[0], s.normalIncluded ? "1991~2020" : "미포함"],
-    ].map(([k, v, sub]) => el("div", { class: "stat" },
-      el("span", { class: "stat-label", text: k }), el("strong", { text: v }), el("span", { class: "stat-sub", text: sub }))),
+      ["calendar", "조회 기간", `${s.periodDays}일`, shortRange(p.start, p.end)],
+      ["check-circle", "자료 확보", `${s.gotDays}일`, `${Math.round((s.gotDays / s.periodDays) * 100)}%`],
+      ["history", "비교 연도", `${s.prevYear}년`, `최근 5년 ${s.recentRange}`],
+      ["layers", "평년 기준", s.normalNote.split(" (")[0], s.normalIncluded ? "1991~2020" : "미포함"],
+    ].map(([ic, k, v, sub]) => el("div", { class: "stat" },
+      el("span", { class: "stat-icon" }, icon(ic)),
+      el("span", { class: "stat-body" },
+        el("span", { class: "stat-label", text: k }), el("strong", { text: v }), el("span", { class: "stat-sub", text: sub })))),
   );
+  renderMetricCards(res);
 
   $("cmp-caption").textContent = `${s.aggDesc}. 결측 지점은 제외하고 나머지 지점 평균으로 산출. ` +
     "대비(편차)=해당 연도−기준값, 대비(비율)=해당 연도÷기준값×100(%). '-' 는 자료 없음.";
@@ -346,6 +371,90 @@ function renderResult(res) {
   $("diag").replaceChildren(...diag);
 }
 
+// ---------------------------------------------------------------- 지표 카드 (서버가 보낸 비교표 값을 그대로 카드로 배치)
+function readComparisonRows(res) {
+  const t = res.comparison && res.comparison.all;
+  if (!t) return [];
+  const idx = (pred) => t.columns.findIndex(pred);
+  const at = (row, i) => (i >= 0 ? row[i] : "-");
+  const iCur = idx((c) => c.startsWith("해당 연도"));
+  const iPrev = idx((c) => c.startsWith("전년("));
+  const cols = {
+    prev: [iPrev, idx((c) => c === "전년 대비"), idx((c) => c === "전년도 대비(비율)")],
+    recent: [idx((c) => c === "최근 5년 평균"), idx((c) => c === "최근 5년 대비"), idx((c) => c === "최근5년평균대비(비율)")],
+    normal: [idx((c) => c === "평년 평균"), idx((c) => c === "평년 대비"), idx((c) => c === "평년대비(비율)")],
+  };
+  return t.rows.map((row) => {
+    const m = String(row[0]).match(/^(.*?)\(([^)]*)\)$/);
+    const label = m ? m[1].trim() : String(row[0]);
+    const base = METRICS.find((k) => label.startsWith(k)) || label;
+    const refs = Object.fromEntries(Object.entries(cols).map(([k, [v, d, r]]) => [k, { value: at(row, v), diff: at(row, d), ratio: at(row, r) }]));
+    return { label, base, unit: m ? m[2] : "", current: at(row, iCur), refs };
+  });
+}
+
+function trendOf(diffText) {
+  if (!diffText || diffText === "-") return "none";
+  if (diffText.startsWith("+")) return "up";
+  if (/^-\d/.test(diffText) && !/^-0(\.0+)?$/.test(diffText)) return "down";
+  return "flat";
+}
+
+function gauge(ratioText) {
+  // 비율(%)을 100% 기준 막대로만 표현 (표시 전용: 50%~150% 범위를 막대 폭에 대응)
+  const r = parseFloat(ratioText);
+  const wrap = el("span", { class: "gauge", "aria-hidden": "true" }, el("span", { class: "gauge-mid" }));
+  if (Number.isFinite(r)) {
+    const pos = Math.max(-1, Math.min(1, (r - 100) / 50));
+    const fill = el("span", { class: `gauge-fill ${pos >= 0 ? "up" : "down"}` });
+    fill.style.width = `${Math.abs(pos) * 50}%`;
+    fill.style[pos >= 0 ? "left" : "right"] = "50%";
+    wrap.append(fill);
+  }
+  return wrap;
+}
+
+function renderMetricCards(res) {
+  const s = res.summary;
+  const names = { prev: `전년 ${s.prevYear}`, recent: "최근 5년", normal: "평년" };
+  const cards = readComparisonRows(res).map((row) => {
+    const view = METRIC_VIEW[row.base] || { icon: "bar-chart", kind: "etc", tone: "avg", primary: "diff" };
+    const compareRows = Object.entries(row.refs).map(([key, ref]) => {
+      const t = trendOf(ref.diff);
+      const arrow = t === "up" ? icon("trending-up", "ic-sm") : t === "down" ? icon("trending-down", "ic-sm") : icon("minus", "ic-sm");
+      const diffEl = el("span", { class: `delta trend-${t}` }, arrow,
+        el("span", { text: ref.diff === "-" ? "-" : `${ref.diff}${row.unit}` }));
+      const ratioEl = el("span", { class: "ratio", text: ref.ratio === "-" ? "-" : `${ref.ratio}%` });
+      return el("div", { class: `cmp-row ${ref.value === "-" ? "is-empty" : ""}` },
+        el("span", { class: "cmp-name" }, el("span", { text: names[key] }), el("small", { text: ref.value === "-" ? "자료 없음" : `${ref.value}${row.unit}` })),
+        el("span", { class: "cmp-values" }, view.primary === "ratio" ? [ratioEl, diffEl] : [diffEl, ratioEl]),
+        gauge(ref.ratio));
+    });
+    return el("article", { class: `metric-card tone-${view.tone} kind-${view.kind}` },
+      el("header", { class: "metric-head" },
+        el("span", { class: "metric-icon" }, icon(view.icon)),
+        el("span", { class: "metric-name", text: row.label })),
+      el("div", { class: "metric-value" },
+        el("strong", { text: row.current }), el("span", { class: "unit", text: row.unit }),
+        el("span", { class: "metric-year", text: `${s.currentYear}년` })),
+      el("div", { class: "cmp-list" }, compareRows));
+  });
+  $("metric-cards").replaceChildren(...cards);
+}
+
+// ---------------------------------------------------------------- 모바일 조회 조건 시트
+function openSettings() {
+  if (!matchMedia(MOBILE).matches) { $("start").focus(); return; }
+  $("settings").classList.add("open");
+  $("sheet-backdrop").hidden = false;
+  document.body.classList.add("sheet-open");
+}
+function closeSettings() {
+  $("settings").classList.remove("open");
+  $("sheet-backdrop").hidden = true;
+  document.body.classList.remove("sheet-open");
+}
+
 function setupTabs() {
   document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
@@ -358,10 +467,16 @@ function init() {
   $("login-form").addEventListener("submit", onLogin);
   $("logout-btn").addEventListener("click", logout);
   $("query-form").addEventListener("submit", onQuery);
-  $("toggle-settings").addEventListener("click", () => $("settings").classList.toggle("open"));
+  hydrateIcons();
+  $("toggle-settings").addEventListener("click", openSettings);
+  $("welcome-start").addEventListener("click", openSettings);
+  $("close-settings").addEventListener("click", closeSettings);
+  $("sheet-backdrop").addEventListener("click", closeSettings);
+  $("quick-query").addEventListener("click", () => $("query-form").requestSubmit());
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
+  matchMedia(MOBILE).addEventListener("change", (e) => { if (!e.matches) closeSettings(); });
   setupTabs();
   buildSettings();
-  if (matchMedia("(max-width: 900px)").matches) $("settings").classList.add("open");
   if (token()) showApp(); else showLogin();
 }
 
