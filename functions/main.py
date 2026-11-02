@@ -3,7 +3,8 @@
 main.py - Firebase Cloud Functions (Python) 진입점
 
   login    : 공용 비밀번호 확인 → 12시간짜리 접속 토큰 발급
-  analyze  : 토큰 확인 → 기상청 자료 조회·가공 → 화면용 표(JSON) 반환
+  jejuweather : 토큰 확인 → 기상청 자료 조회·가공 → 화면용 표(JSON) 반환
+               (이름에 'analyze' 등을 쓰면 브라우저 광고·추적 차단 기능이 요청을 막으므로 중립적인 이름 사용)
 
 두 함수 모두 '호출 가능 함수(callable)' 이며, 화면(public/js/api.js)이 호출합니다.
 비밀번호와 기상청 API 키는 Secret Manager 에 저장된 값을 사용합니다.
@@ -53,7 +54,7 @@ def login(req: https_fn.CallableRequest) -> Dict[str, Any]:
 
 @https_fn.on_call(secrets=[APP_PASSWORD, KMA_API_KEY], invoker="public", memory=options.MemoryOption.GB_1,
                   timeout_sec=540, concurrency=4, cpu=1)
-def analyze(req: https_fn.CallableRequest) -> Dict[str, Any]:
+def jejuweather(req: https_fn.CallableRequest) -> Dict[str, Any]:
     data = req.data or {}
     if not auth.verify_token(str(data.get("token", "")), APP_PASSWORD.value or ""):
         raise _fail(https_fn.FunctionsErrorCode.UNAUTHENTICATED, "로그인이 만료되었습니다. 다시 로그인해 주세요.")
