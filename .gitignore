@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .venv/
 *.csv
+.firebase/
+firebase.json
+firebase-debug.log

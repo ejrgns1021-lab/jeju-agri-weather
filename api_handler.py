@@ -23,6 +23,8 @@ import numpy as np
 import pandas as pd
 import requests
 
+import firestore_cache as fsc
+
 try:  # Streamlit 환경이면 st.cache_data 사용, 아니면(단위 테스트 등) 무시
     import streamlit as st
 
@@ -682,6 +684,10 @@ def fetch_apihub_daily_text(stn_id: int, start_ymd: str, end_ymd: str, api_key: 
 @cache_data(ttl=6 * 3600, show_spinner=False)
 def fetch_apihub_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
                        rain_missing_as_zero: bool = True) -> pd.DataFrame:
+    cache_key = ("apihub", stn_id, start_ymd, end_ymd, int(rain_missing_as_zero))
+    cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key)
+    if cached is not None:
+        return cached
     text = fetch_apihub_daily_text(stn_id, start_ymd, end_ymd, api_key)
     std, _diag = parse_daily_text_best(text, stn_id, rain_missing_as_zero, DEFAULT_DAILY_COLS)
     if std.empty:
@@ -689,12 +695,18 @@ def fetch_apihub_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
         if err:
             raise WeatherApiError(f"API허브 응답 오류: {err}")
         return empty_daily_frame()
+    if fsc.is_finalized(end_ymd):
+        fsc.put_df(fsc.DAILY_COLLECTION, std, *cache_key, meta={"stn_id": stn_id, "start": start_ymd, "end": end_ymd})
     return std
 
 
 @cache_data(ttl=6 * 3600, show_spinner=False)
 def fetch_datagokr_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
                          rain_missing_as_zero: bool = True) -> pd.DataFrame:
+    cache_key = ("datagokr", stn_id, start_ymd, end_ymd, int(rain_missing_as_zero))
+    cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key)
+    if cached is not None:
+        return cached
     key = urllib.parse.unquote(api_key) if "%" in api_key else api_key
     items: List[Dict[str, Any]] = []
     page = 1
@@ -726,7 +738,10 @@ def fetch_datagokr_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str
     if not items:
         return empty_daily_frame()
     raw = pd.DataFrame(items)
-    return standardize_daily(raw, "datagokr", stn_id, rain_missing_as_zero)
+    std = standardize_daily(raw, "datagokr", stn_id, rain_missing_as_zero)
+    if fsc.is_finalized(end_ymd):
+        fsc.put_df(fsc.DAILY_COLLECTION, std, *cache_key, meta={"stn_id": stn_id, "start": start_ymd, "end": end_ymd})
+    return std
 
 
 def split_period(start: dt.date, end: dt.date, max_days: int = MAX_DAYS_PER_CALL) -> List[Tuple[dt.date, dt.date]]:
@@ -905,6 +920,11 @@ def parse_normals_text_best(text: str, station_ids: Optional[List[int]] = None) 
 
 @cache_data(ttl=24 * 3600, show_spinner=False)
 def fetch_apihub_normals_raw(mm1: int, dd1: int, mm2: int, dd2: int, api_key: str, tmst: int = 2021) -> Tuple[pd.DataFrame, str]:
+    # 평년값(1991~2020)은 바뀌지 않으므로 Firestore 에 저장해 재사용 (원문 텍스트는 저장하지 않음)
+    cache_key = ("normals", tmst, f"{mm1:02d}{dd1:02d}", f"{mm2:02d}{dd2:02d}")
+    cached = fsc.get_df(fsc.NORMALS_COLLECTION, *cache_key)
+    if cached is not None:
+        return cached, ""
     params = {"norm": "D", "tmst": str(tmst), "stn": "0", "MM1": str(mm1), "DD1": str(dd1),
               "MM2": str(mm2), "DD2": str(dd2), "help": "1", "authKey": api_key}
     resp = _http_get(APIHUB_NORMAL_URL, params)
@@ -914,6 +934,8 @@ def fetch_apihub_normals_raw(mm1: int, dd1: int, mm2: int, dd2: int, api_key: st
         err = _detect_text_error(text)
         if err:
             raise WeatherApiError(f"평년값 API 응답 오류: {err}")
+    else:
+        fsc.put_df(fsc.NORMALS_COLLECTION, norm_df, *cache_key)
     return norm_df, text
 
 

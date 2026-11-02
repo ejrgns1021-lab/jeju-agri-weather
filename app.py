@@ -2,18 +2,20 @@
 """
 app.py - 제주도 농업 기상 분석 대시보드 (Phase 1~4 통합 최종본)
 
-  Phase 1  비밀번호 인증 (.streamlit/secrets.toml 의 password)
+  Phase 1  비밀번호 인증 (환경변수 APP_PASSWORD 또는 .streamlit/secrets.toml 의 password)
   Phase 2  사이드바(기간·지표) + 날짜 유효성 검증
   Phase 3  기상청 API 연동(api_handler) + Pandas 가공(data_processor)
   Phase 4  한글(HWP) 붙여넣기용 HTML 표 · 보고서용 열 이름 · 서버 지연 예외 처리
 
 실행:  streamlit run app.py
+배포:  Cloud Run(컨테이너) + Firebase Hosting + Firestore 캐시 — README.md 참고
 """
 from __future__ import annotations
 
 import datetime as dt
 import hmac
 import html
+import os
 import pathlib
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -31,6 +33,7 @@ from api_handler import (
     fetch_apihub_daily_text,
     normals_for_period,
 )
+import firestore_cache
 from data_processor import (
     NORMAL_END_YEAR,
     NORMAL_START_YEAR,
@@ -56,7 +59,15 @@ RECENT_YEARS = 5
 # =====================================================================
 # 설정값(secrets) 읽기
 # =====================================================================
+# Cloud Run 에서는 Secret Manager 값을 아래 환경변수로 주입합니다.
+ENV_NAMES: Dict[str, str] = {"password": "APP_PASSWORD", "api_key": "KMA_API_KEY", "api_source": "API_SOURCE"}
+
+
 def get_secret(key: str, default: str = "") -> str:
+    """환경변수(Cloud Run) → .streamlit/secrets.toml(로컬) 순서로 설정값을 읽는다."""
+    env_value = os.environ.get(ENV_NAMES.get(key, key.upper()), "").strip()
+    if env_value:
+        return env_value
     try:
         value = st.secrets.get(key, default)
     except Exception:
@@ -74,7 +85,7 @@ def check_password() -> bool:
     expected = get_secret("password", "")
     st.markdown("## 🔒 제주도 농업 기상 분석 대시보드")
     if not expected:
-        st.error("`.streamlit/secrets.toml` 에 `password` 항목이 없습니다. 파일을 확인해 주세요.")
+        st.error("접속 비밀번호가 설정되지 않았습니다. Cloud Run 의 `APP_PASSWORD` 시크릿(또는 로컬 `.streamlit/secrets.toml` 의 `password`)을 확인해 주세요.")
         return False
 
     st.caption("대시보드에 접근하려면 비밀번호를 입력하세요.")
@@ -434,11 +445,11 @@ def main() -> None:
         source = "apihub" if source_label == "기상청 API허브" else "datagokr"
         saved_key = get_secret("api_key", "")
         if saved_key:
-            st.caption("API 키: `.streamlit/secrets.toml` 에서 로드됨")
+            st.caption("API 키: 서버 설정에서 로드됨")
             override = st.text_input("다른 키로 덮어쓰기 (선택)", type="password")
             api_key = override.strip() or saved_key
         else:
-            api_key = st.text_input("기상청 API 키", type="password", help="`.streamlit/secrets.toml` 의 api_key 에 저장해 두면 편리합니다.").strip()
+            api_key = st.text_input("기상청 API 키", type="password", help="서버의 KMA_API_KEY 시크릿(또는 로컬 secrets.toml 의 api_key)에 저장해 두면 편리합니다.").strip()
             if not api_key:
                 st.warning("API 키를 입력해 주세요.")
         if normal_mode == "api" and source != "apihub":
@@ -453,10 +464,11 @@ def main() -> None:
         if col_a.button("캐시 비우기"):
             st.cache_data.clear()
             st.session_state.pop("result", None)
-            st.toast("캐시를 비웠습니다.")
+            st.toast("화면 캐시를 비웠습니다. (Firestore 에 저장된 확정 자료는 유지)")
         if col_b.button("로그아웃"):
             st.session_state.clear()
             st.rerun()
+        st.caption(f"저장소: {firestore_cache.status()}")
 
     # ---------------- 메인 화면 ----------------
     st.title("🌾 제주도 농업 기상 분석 대시보드")
