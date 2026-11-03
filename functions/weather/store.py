@@ -190,3 +190,53 @@ def put_df(collection: str, df: pd.DataFrame, *key_parts: Any, meta: Optional[Di
         client.collection(collection).document(_doc_id(*key_parts)).set(payload)
     except Exception as exc:
         log.warning("Firestore 저장 실패(%s): %s", collection, exc)
+
+
+# ---------------------------------------------------------------------
+# 3) 조회 작업 진행 상황 (화면 로딩창 표시 + 60초 넘는 조회 결과 전달용)
+#    jobs/{job_id}: status(running|done|error), pct, stage, detail, result(JSON 문자열), error
+# ---------------------------------------------------------------------
+JOBS_COLLECTION = "jobs"
+JOB_RESULT_MAX_BYTES = 900_000      # Firestore 문서 1MB 제한 여유분
+_job_last_write: Dict[str, float] = {}
+
+
+def job_update(job_id: str, force: bool = False, **fields: Any) -> None:
+    """진행 상황 저장. 너무 잦은 쓰기를 막기 위해 0.8초 간격으로만 기록(force=True 면 즉시)."""
+    client = _get_client()
+    if client is None or not job_id:
+        return
+    now = time.time()
+    if not force and now - _job_last_write.get(job_id, 0) < 0.8:
+        return
+    _job_last_write[job_id] = now
+    try:
+        fields["updated_at"] = dt.datetime.now(dt.timezone.utc)
+        fields.setdefault("expire_at", dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=1))
+        client.collection(JOBS_COLLECTION).document(job_id).set(fields, merge=True)
+    except Exception as exc:
+        log.warning("진행 상황 저장 실패: %s", exc)
+
+
+def job_get(job_id: str) -> Optional[Dict[str, Any]]:
+    client = _get_client()
+    if client is None or not job_id:
+        return None
+    try:
+        snap = client.collection(JOBS_COLLECTION).document(job_id).get()
+        return snap.to_dict() if snap.exists else None
+    except Exception as exc:
+        log.warning("진행 상황 읽기 실패: %s", exc)
+        return None
+
+
+def job_finish(job_id: str, result: Optional[Dict[str, Any]] = None, error: Optional[Dict[str, str]] = None) -> None:
+    if error is not None:
+        job_update(job_id, force=True, status="error", error=error, pct=100)
+        return
+    payload = json.dumps(result, ensure_ascii=False, default=str)
+    if len(payload.encode("utf-8")) > JOB_RESULT_MAX_BYTES:
+        job_update(job_id, force=True, status="done", pct=100, result=None, too_large=True)
+    else:
+        job_update(job_id, force=True, status="done", pct=100, result=payload)
+    _job_last_write.pop(job_id, None)

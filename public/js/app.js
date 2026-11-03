@@ -238,10 +238,28 @@ function setLoading(on, normalMode) {
   clearInterval(loadingTimer);
   if (!on) return;
   const t0 = Date.now();
-  const hint = normalMode === "compute" ? "과거 30년 실측 계산은 처음 1~3분 걸릴 수 있습니다." : "보통 10~40초 걸립니다.";
-  const tick = () => { $("loading-text").textContent = `${Math.floor((Date.now() - t0) / 1000)}초 경과 · ${hint}`; };
+  $("loading-bar").style.width = "2%";
+  $("loading-pct").textContent = "0%";
+  $("loading-stage").textContent = "서버에 요청하는 중";
+  $("loading-detail").textContent = "";
+  $("loading-text").textContent = normalMode === "compute"
+    ? "과거 30년 실측 계산은 처음 1~3분 걸릴 수 있습니다. (한 번 받은 자료는 저장되어 다음부터 빨라집니다)"
+    : "보통 10~40초 걸립니다. (한 번 받은 자료는 저장되어 다음부터 빨라집니다)";
+  const tick = () => {
+    const sec = Math.floor((Date.now() - t0) / 1000);
+    $("loading-time").textContent = sec >= 60 ? `${Math.floor(sec / 60)}분 ${sec % 60}초 경과` : `${sec}초 경과`;
+  };
   tick();
   loadingTimer = setInterval(tick, 1000);
+}
+
+// 서버가 알려 준 진행 상황 표시 (어느 자료를 기상청 API 에서 받는 중인지)
+function showProgress(p) {
+  const pct = Math.max(2, Math.min(100, Number(p.pct) || 0));
+  $("loading-bar").style.width = `${pct}%`;
+  $("loading-pct").textContent = `${Math.round(pct)}%`;
+  if (p.stage) $("loading-stage").textContent = p.stage;
+  $("loading-detail").textContent = p.detail || "";
 }
 
 async function onQuery(ev) {
@@ -252,7 +270,7 @@ async function onQuery(ev) {
   closeSettings();
   setLoading(true, q.normalMode);
   try {
-    const res = await analyze(token(), q);
+    const res = await analyze(token(), q, showProgress);
     state.result = res;
     renderResult(res);
   } catch (e) {

@@ -22,7 +22,7 @@
 | `public/js/icons.js` | 화면 아이콘(Lucide, SVG 코드 내장 — 이미지 파일 없음) |
 | `public/js/tables.js` | 표 그리기, 한글용 복사(HTML 표), 탭 텍스트 복사, CSV 저장 |
 | `public/css/style.css` | 디자인 (모바일·다크 모드 대응) |
-| `functions/main.py` | 백엔드 진입점: `login`(비밀번호 → 접속 토큰), `jejuweather`(조회·가공) |
+| `functions/main.py` | 백엔드 진입점: `login`(비밀번호 → 접속 토큰), `jejuweather`(조회·가공), `jejuprogress`(진행 상황·결과 전달) |
 | `functions/weather/kma_api.py` | 기상청 API 호출, 응답 파싱, 결측 처리 |
 | `functions/weather/processing.py` | 4개 지점 평균, 기간 집계, 비교표·비율 산출, 보고서 포맷 |
 | `functions/weather/pipeline.py` | 조회 조건 검증 → 전체 계산 → 화면용 표(JSON) 묶음 |
@@ -77,6 +77,7 @@ firebase emulators:start --only functions,hosting
 백엔드 검사: `cd functions && python3 tests/test_backend.py`
 
 ## 변경 내역
+- **v6.5**: 조회 중 로딩창에 진행 단계·세부 내용·진행률 표시(어느 연도·지점 자료를 받는 중인지), 60초가 넘는 조회도 결과를 받아오도록 작업 상태를 Firestore(`jobs`)에 기록, 오류 문구·로그에서 기상청 API 키 가림. 계산 로직 변경 없음
 - **v6.4**: 백엔드 호출을 웹페이지와 같은 주소(`/api/...`, Hosting 연결)로 변경 — 일부 브라우저·네트워크가 cloudfunctions.net 주소를 차단해 로그인·조회가 안 되던 문제 해결. 60초가 넘는 조회는 자동 재시도 후 함수 주소로 직접 호출. 계산 로직 변경 없음
 - **v6.3**: 조회 함수 이름 `analyze` → `jejuweather` (브라우저 광고·추적 차단기가 'analyze' 주소를 막아 "서버에 연결할 수 없습니다"가 뜨던 문제 해결). 계산 로직 변경 없음
 - **v6.2**: 화면 전면 개편 — 지표별 비교 카드(기준 대비 증감·비율 막대), 모바일 바텀 시트 조회 조건·상단 요약 바·원탭 조회, Lucide 아이콘(코드 내장), 차분한 그린/블루 톤. 백엔드·계산·API 호출 코드는 변경 없음

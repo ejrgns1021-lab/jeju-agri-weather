@@ -9,8 +9,8 @@ pipeline.py  (백엔드)
 from __future__ import annotations
 
 import datetime as dt
-from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -125,7 +125,10 @@ def _metric_label(name: str) -> str:
 # ---------------------------------------------------------------------
 # 메인 파이프라인
 # ---------------------------------------------------------------------
-def run_analysis(req: Dict[str, Any], api_key: str) -> Dict[str, Any]:
+ProgressFn = Callable[[int, str, str], None]   # (진행률 0~100, 단계, 세부 내용)
+
+
+def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressFn] = None) -> Dict[str, Any]:
     start: dt.date = req["start"]
     end: dt.date = req["end"]
     metric_names: List[str] = req["metrics"]
@@ -137,18 +140,36 @@ def run_analysis(req: Dict[str, Any], api_key: str) -> Dict[str, Any]:
 
     notices: List[Dict[str, str]] = []   # {"level": info|warning|error, "text": ...}
 
+    def report(pct: int, stage: str, detail: str = "") -> None:
+        """진행 상황 알림 (화면 로딩창 표시용, 계산에는 영향 없음)"""
+        if progress:
+            try:
+                progress(pct, stage, detail)
+            except Exception:  # 진행 표시 실패가 조회를 막지 않도록
+                pass
+
     def fetch_period(s: dt.date, e: dt.date) -> pd.DataFrame:
         df, _ = fetch_all_stations(s, e, api_key, source, station_ids, rain_zero)
         return df
 
-    def prefetch(years: List[int]) -> None:
+    def prefetch(years: List[int], pct_from: int = 0, pct_to: int = 0, stage: str = "") -> None:
         """과거 연도 자료를 동시에 받아 메모리 캐시에 채워 둔다 (이후 계산은 캐시에서 즉시 처리)."""
-        periods = [shift_period(start, end, y) for y in years]
+        periods = {y: shift_period(start, end, y) for y in years}
         with ThreadPoolExecutor(max_workers=PREFETCH_WORKERS) as pool:
-            list(pool.map(lambda p: fetch_period(*p), periods))
+            futures = {pool.submit(fetch_period, *periods[y]): y for y in years}
+            done_years: List[int] = []
+            for fut in as_completed(futures):
+                fut.result()
+                done_years.append(futures[fut])
+                n = len(done_years)
+                report(pct_from + (pct_to - pct_from) * n // len(years), stage,
+                       f"{futures[fut]}년 동기간 자료 수신 완료 ({n}/{len(years)})")
 
     # 1) 해당 연도
-    current_df, errors = fetch_all_stations(start, end, api_key, source, station_ids, rain_zero)
+    src_name = "기상청 API허브" if source == "apihub" else "공공데이터포털"
+    report(2, f"해당 연도({start.year}) 관측 자료", f"{src_name}에 접속하는 중")
+    current_df, errors = fetch_all_stations(start, end, api_key, source, station_ids, rain_zero,
+                                            progress=lambda m: report(5, f"해당 연도({start.year}) 관측 자료", m))
     current_daily = jeju_daily_mean(current_df)
     current_vals = aggregate_period(current_daily, metric_names, extreme)
     current_days = valid_days(current_daily, metric_names)
@@ -172,7 +193,9 @@ def run_analysis(req: Dict[str, Any], api_key: str) -> Dict[str, Any]:
 
     # 2) 최근 5년 (첫 해 = 전년도)
     recent_years = [start.year - k for k in range(1, RECENT_YEARS + 1)]
-    prefetch(recent_years)
+    recent_stage = f"전년·최근 5년({min(recent_years)}~{max(recent_years)}) 자료"
+    report(15, recent_stage, f"{len(recent_years)}개 연도 × {len(station_ids)}개 지점 조회 시작")
+    prefetch(recent_years, 15, 55, recent_stage)
     recent_df = yearly_period_values(fetch_period, start, end, recent_years, metric_names, extreme)
     prev_year = start.year - 1
     prev_vals, prev_days = extract_year_values(recent_df, prev_year, metric_names)
@@ -187,6 +210,7 @@ def run_analysis(req: Dict[str, Any], api_key: str) -> Dict[str, Any]:
     normal_raw_text = ""
     normal_yearly_df = pd.DataFrame()
     if normal_mode == "api":
+        report(58, "평년값(1991~2020)", "기상청 평년값 API 조회 중")
         normal_df, unmapped, normal_raw_text = normals_for_period(start, end, api_key, station_ids)
         normal_vals = aggregate_period(jeju_daily_mean(normal_df), metric_names, extreme=False)
         normal_cnt = {n: 30 if not pd.isna(normal_vals[n]) else 0 for n in metric_names}
@@ -194,7 +218,7 @@ def run_analysis(req: Dict[str, Any], api_key: str) -> Dict[str, Any]:
         # 평년값 API 에서 얻지 못한 지표는 과거 30년 실측으로 대체 계산
         fallback = [n for n in metric_names if n in unmapped or pd.isna(normal_vals.get(n, float("nan")))]
         if fallback:
-            prefetch(normal_years)
+            prefetch(normal_years, 62, 92, "평년 보완: 1991~2020 실측 자료")
             normal_yearly_df = yearly_period_values(fetch_period, start, end, normal_years, fallback, extreme)
             fb_vals, fb_cnt = mean_of_years(normal_yearly_df, fallback)
             for n in fallback:
@@ -209,7 +233,7 @@ def run_analysis(req: Dict[str, Any], api_key: str) -> Dict[str, Any]:
                 notices.append({"level": "info", "text": "평년값 API 응답에 없는 지표(" + ", ".join(fallback) +
                                 ")는 1991~2020년 30년 실측 자료로 대체 계산했습니다."})
     elif normal_mode == "compute":
-        prefetch(normal_years)
+        prefetch(normal_years, 58, 92, "평년: 1991~2020 실측 30년 자료")
         normal_yearly_df = yearly_period_values(fetch_period, start, end, normal_years, metric_names, extreme)
         normal_vals, normal_cnt = mean_of_years(normal_yearly_df, metric_names)
         normal_note = f"과거 30년 실측 계산 ({NORMAL_START_YEAR}~{NORMAL_END_YEAR})"
@@ -228,6 +252,7 @@ def run_analysis(req: Dict[str, Any], api_key: str) -> Dict[str, Any]:
                         ", ".join(empty_metrics) + " — '진단' 탭의 인식된 컬럼을 확인해 주세요."})
 
     # 4) 표 가공
+    report(95, "비교표 가공", "편차·비율 계산 및 표 작성 중")
     comparison = build_comparison_table(current_vals, recent_vals, normal_vals, metric_names, start.year,
                                         extreme=extreme, decimals=1, prev=prev_vals)
     comparison_layouts = {key: table_json(format_comparison_for_display(comparison, start.year, layout_mode=key, decimals=1))

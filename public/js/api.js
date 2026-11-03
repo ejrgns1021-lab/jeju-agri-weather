@@ -82,5 +82,56 @@ export async function callFunction(name, data) {
 }
 
 export const login = (password) => callFunction("login", { password });
-// 함수 이름에 analyze/analytics/track 등이 들어가면 광고·추적 차단기가 요청을 막으므로 중립적인 이름 사용
-export const analyze = (token, query) => callFunction("jejuweather", { token, query });
+
+function newJobId() {
+  const a = new Uint8Array(12);
+  (window.crypto || window.msCrypto).getRandomValues(a);
+  return Array.from(a, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const MAX_WAIT_MS = 10 * 60 * 1000;   // 서버 함수 제한(9분) + 여유
+
+/**
+ * 조회 실행 + 진행 상황 표시
+ * - 본 요청(jejuweather)을 보내는 동시에 1.5초마다 진행 상황(jejuprogress)을 받아 onProgress 로 전달
+ * - 본 요청이 60초 제한으로 끊겨도(503/504) 서버는 계속 처리하므로, 완료되면 진행 상황 조회로 결과를 받는다
+ * (함수 이름에 analyze/analytics/track 등이 들어가면 광고·추적 차단기가 막으므로 중립적인 이름 사용)
+ */
+export async function analyze(token, query, onProgress = () => {}) {
+  const jobId = newJobId();
+  const t0 = Date.now();
+  let finished = false;
+  let mainError = null;
+  let mainResult = null;
+
+  const main = post(LOCAL ? `${await directBase()}/jejuweather` : "/api/jejuweather", { token, query, jobId })
+    .then((r) => { mainResult = r; })
+    .catch((e) => { mainError = e; })
+    .finally(() => { finished = true; });
+
+  const cutOff = (e) => e && (e.status === "DEADLINE_EXCEEDED" || e.status === "UNAVAILABLE" && !e.httpStatus || [502, 503, 504].includes(e.httpStatus));
+
+  while (Date.now() - t0 < MAX_WAIT_MS) {
+    await Promise.race([main, sleep(1500)]);
+    if (finished && mainResult) return mainResult;
+    if (finished && mainError && !cutOff(mainError)) throw mainError;   // 입력 오류·기상청 오류 등은 바로 표시
+    let p = null;
+    try {
+      p = await callFunction("jejuprogress", { token, jobId, withResult: finished });
+    } catch (e) {
+      if (e.status === "UNAUTHENTICATED") throw e;
+      continue;   // 진행 상황 조회 실패는 무시하고 계속 대기
+    }
+    if (p && p.status !== "pending") onProgress({ ...p, waited: (Date.now() - t0) / 1000, cutOff: finished });
+    if (p && p.status === "error" && p.error) throw new ApiError(p.error.message, p.error.status);
+    if (p && p.status === "done") {
+      if (p.result) return p.result;
+      if (finished) {
+        if (mainResult) return mainResult;
+        throw new ApiError(p.too_large ? "결과가 너무 커서 전달하지 못했습니다. 조회 기간을 줄여 주세요." : "결과를 받지 못했습니다. 다시 조회해 주세요.", "INTERNAL");
+      }
+    }
+  }
+  throw new ApiError("조회 시간이 너무 오래 걸립니다. 잠시 후 다시 시도해 주세요.", "DEADLINE_EXCEEDED");
+}

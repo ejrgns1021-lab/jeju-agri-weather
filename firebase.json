@@ -40,6 +40,13 @@
           "functionId": "jejuweather",
           "region": "asia-northeast3"
         }
+      },
+      {
+        "source": "/api/jejuprogress",
+        "function": {
+          "functionId": "jejuprogress",
+          "region": "asia-northeast3"
+        }
       }
     ]
   },
