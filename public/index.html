@@ -181,9 +181,13 @@
 
   <!-- 조회 중 -->
   <div id="loading" class="loading" hidden>
-    <div class="loading-card">
+    <div class="loading-card" role="status" aria-live="polite">
       <div class="spinner" aria-hidden="true"></div>
-      <p><strong>기상청 자료를 조회·가공하고 있습니다</strong></p>
+      <p class="loading-title"><strong>기상청 자료를 조회·가공하고 있습니다</strong></p>
+      <div class="progress" aria-hidden="true"><span id="loading-bar"></span></div>
+      <div class="loading-meta"><span id="loading-pct">0%</span><span id="loading-time">0초</span></div>
+      <p class="loading-stage" id="loading-stage">서버에 요청하는 중</p>
+      <p class="loading-detail" id="loading-detail"></p>
       <p class="muted small" id="loading-text"></p>
     </div>
   </div>
