@@ -70,8 +70,29 @@ METRICS: Dict[str, Dict[str, Any]] = {
                  "norm": ["SS_DUR", "SS_DAY", "SS", "SS_SUM", "SS_NORM", "SS_HR", "SUN", "sumSsHr"],
                  "desc_in": [["일조", "합"], ["일조", "시간"], ["일조"]],
                  "desc_ex": ["가조", "캄벨", "시각", "일사", "편차", "율", "%"]},
+    # v6.7: 강우일수 — API 에 항목이 없으므로 일강수량이 RAIN_DAY_MIN_MM 이상인 날을 1일로 집계(파생 지표)
+    "강우일수": {"col": "rainDays", "unit": "일", "agg": "sum", "kind": "days", "derived_from": "sumRn",
+              "daily": [], "norm": [], "desc_in": [], "desc_ex": []},
 }
 METRIC_COLS: List[str] = [m["col"] for m in METRICS.values()]
+RAIN_DAY_MIN_MM = 0.1   # 기상청 강수일수 기준(일강수량 0.1mm 이상)
+
+
+def ensure_metric_cols(df: pd.DataFrame) -> pd.DataFrame:
+    """이전 버전에서 저장된 자료처럼 일부 지표 열이 없으면 빈 값(NaN)으로 추가"""
+    for c in METRIC_COLS:
+        if c not in df.columns:
+            df[c] = np.nan
+    return df
+
+
+def add_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    """관측 일자료에서 파생 지표 계산: 강우일수 = 일강수량 ≥ 0.1mm 이면 1, 아니면 0 (강수 결측일은 빈 값)"""
+    ensure_metric_cols(df)
+    if "sumRn" in df.columns:
+        rn = pd.to_numeric(df["sumRn"], errors="coerce")
+        df["rainDays"] = np.where(rn.isna(), np.nan, (rn >= RAIN_DAY_MIN_MM).astype(float))
+    return df
 BASE_COLS: List[str] = ["date", "stn_id", "stn_name"]
 
 # API허브 kma_sfcdd3.php 표준 컬럼 순서(help=0 응답 대비 기본값)
@@ -585,6 +606,8 @@ def standardize_daily(raw: pd.DataFrame, source: str, stn_default: int,
 
     mapping: Dict[str, Optional[str]] = {}
     for name, meta in METRICS.items():
+        if meta.get("derived_from"):
+            continue  # 파생 지표(강우일수)는 아래에서 계산
         src_col = _find_metric_col(cols, meta, "daily", legend, raw=raw)
         mapping[name] = src_col
         out[meta["col"]] = clean_numeric(raw[src_col], meta["kind"]) if src_col else np.nan
@@ -593,6 +616,8 @@ def standardize_daily(raw: pd.DataFrame, source: str, stn_default: int,
     if rain_missing_as_zero:
         observed = out["avgTa"].notna() | out["maxTa"].notna() | out["minTa"].notna()
         out.loc[observed & out["sumRn"].isna(), "sumRn"] = 0.0
+    add_derived_metrics(out)
+    mapping["강우일수"] = f"RN_DAY≥{RAIN_DAY_MIN_MM}mm" if mapping.get("누적 강수량") else None
 
     out = out.dropna(subset=["date"]).drop_duplicates(subset=["date", "stn_id"])
     out = out.sort_values(["date", "stn_id"]).reset_index(drop=True)
@@ -665,7 +690,7 @@ def fetch_apihub_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
     cache_key = ("apihub", stn_id, start_ymd, end_ymd, int(rain_missing_as_zero))
     cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key, recent_ttl=fsc.RECENT_TTL_SEC)
     if cached is not None:
-        return cached
+        return add_derived_metrics(cached)   # 이전 버전 저장분에도 강우일수 계산
     text = fetch_apihub_daily_text(stn_id, start_ymd, end_ymd, api_key)
     std, _diag = parse_daily_text_best(text, stn_id, rain_missing_as_zero, DEFAULT_DAILY_COLS)
     if std.empty:
@@ -685,7 +710,7 @@ def fetch_datagokr_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str
     cache_key = ("datagokr", stn_id, start_ymd, end_ymd, int(rain_missing_as_zero))
     cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key, recent_ttl=fsc.RECENT_TTL_SEC)
     if cached is not None:
-        return cached
+        return add_derived_metrics(cached)   # 이전 버전 저장분에도 강우일수 계산
     key = urllib.parse.unquote(api_key) if "%" in api_key else api_key
     items: List[Dict[str, Any]] = []
     page = 1
@@ -834,6 +859,10 @@ def _extract_normals_from_raw(raw: pd.DataFrame, legend: Dict[str, str],
     norm = pd.DataFrame({"stn_id": work["stn_id"], "_mmdd": work["_mmdd"]})
     mapping: Dict[str, Optional[str]] = {}
     for name, meta in METRICS.items():
+        if meta.get("derived_from"):
+            mapping[name] = None
+            norm[meta["col"]] = np.nan   # 평년값 API 에 없음 → 과거 30년 실측으로 대체 계산
+            continue
         src = _find_metric_col(cols, meta, "norm", legend, raw=work)
         if src is None:
             mapping[name] = None
@@ -900,7 +929,7 @@ def fetch_apihub_normals_raw(mm1: int, dd1: int, mm2: int, dd2: int, api_key: st
     cache_key = ("normals", tmst, f"{mm1:02d}{dd1:02d}", f"{mm2:02d}{dd2:02d}")
     cached = fsc.get_df(fsc.NORMALS_COLLECTION, *cache_key)
     if cached is not None:
-        return cached, ""
+        return ensure_metric_cols(cached), ""   # 평년 강우일수는 API 에 없으므로 빈 값 유지
     params = {"norm": "D", "tmst": str(tmst), "stn": "0", "MM1": str(mm1), "DD1": str(dd1),
               "MM2": str(mm2), "DD2": str(dd2), "help": "1", "authKey": api_key}
     resp = _http_get(APIHUB_NORMAL_URL, params)
@@ -939,7 +968,7 @@ def normals_for_period(start: dt.date, end: dt.date, api_key: str,
     if not parts:
         return empty_daily_frame(), [m for m in METRICS], full_text
 
-    norm_all = pd.concat(parts, ignore_index=True)
+    norm_all = ensure_metric_cols(pd.concat(parts, ignore_index=True))
     norm_all = norm_all[norm_all["stn_id"].isin(station_ids)].copy()
     if norm_all.empty:
         return empty_daily_frame(), [m for m in METRICS], full_text
