@@ -4,7 +4,7 @@ import { analyze, login, ApiError } from "./api.js";
 import { buildTable, copyForHwp, copyText, downloadCsv, toTsv } from "./tables.js";
 import { icon, hydrateIcons } from "./icons.js";
 
-const METRICS = ["평균 기온", "최고 기온", "최저 기온", "누적 강수량", "일조 시간"];
+const METRICS = ["평균 기온", "최고 기온", "최저 기온", "누적 강수량", "일조 시간", "강우일수"];
 const STATIONS = { 제주: 184, 고산: 185, 성산: 188, 서귀포: 189 };
 const NORMAL_MODES = [
   ["api", "평년값 API", "권장 · 빠름"],
@@ -19,10 +19,12 @@ const METRIC_VIEW = {
   "최저 기온": { icon: "thermometer-snowflake", kind: "temp", tone: "min", primary: "diff" },
   "누적 강수량": { icon: "cloud-rain", kind: "rain", tone: "rain", primary: "ratio" },
   "일조 시간": { icon: "sun", kind: "sun", tone: "sun", primary: "ratio" },
+  "강우일수": { icon: "umbrella", kind: "rain", tone: "rdays", primary: "diff" },
 };
 const MOBILE = "(max-width: 900px)";
 const TOKEN_KEY = "jeju-weather-token";
 const PREFS_KEY = "jeju-weather-prefs";
+const PREFS_VERSION = 2; // v6.7: 강우일수 추가 — 이전에 저장된 지표 선택은 새 지표가 빠져 있으므로 초기화
 const MAX_DAYS = 366;
 
 const $ = (id) => document.getElementById(id);
@@ -149,7 +151,7 @@ function buildSettings() {
     },
   })));
 
-  const selMetrics = prefs.metrics || METRICS;
+  const selMetrics = prefs.v === PREFS_VERSION && prefs.metrics ? prefs.metrics : METRICS;
   $("metric-list").replaceChildren(...METRICS.map((m) => el("label", { class: `toggle tone-${METRIC_VIEW[m].tone}` },
     el("input", { type: "checkbox", name: "metric", value: m, ...(selMetrics.includes(m) ? { checked: "" } : {}) }),
     el("span", { class: "toggle-ui" }, icon(METRIC_VIEW[m].icon), el("span", { text: m })))));
@@ -266,7 +268,7 @@ async function onQuery(ev) {
   ev.preventDefault();
   if (!validateForm()) return;
   const q = readQuery();
-  storage.set(localStorage, PREFS_KEY, JSON.stringify(q));
+  storage.set(localStorage, PREFS_KEY, JSON.stringify({ ...q, v: PREFS_VERSION }));
   closeSettings();
   setLoading(true, q.normalMode);
   try {
@@ -434,7 +436,9 @@ function gauge(ratioText) {
 
 function renderMetricCards(res) {
   const s = res.summary;
-  const names = { prev: `전년 ${s.prevYear}`, recent: "최근 5년", normal: "평년" };
+  // 비교 기준 이름과 기준값 설명 (예: "전년 대비" / "2025년 19.6℃")
+  const names = { prev: "전년 대비", recent: "최근 5년 대비", normal: "평년 대비" };
+  const refDesc = { prev: `${s.prevYear}년`, recent: `${s.recentRange} 평균`, normal: "1991~2020 평균" };
   const cards = readComparisonRows(res).map((row) => {
     const view = METRIC_VIEW[row.base] || { icon: "bar-chart", kind: "etc", tone: "avg", primary: "diff" };
     const compareRows = Object.entries(row.refs).map(([key, ref]) => {
@@ -444,7 +448,8 @@ function renderMetricCards(res) {
         el("span", { text: ref.diff === "-" ? "-" : `${ref.diff}${row.unit}` }));
       const ratioEl = el("span", { class: "ratio", text: ref.ratio === "-" ? "-" : `${ref.ratio}%` });
       return el("div", { class: `cmp-row ${ref.value === "-" ? "is-empty" : ""}` },
-        el("span", { class: "cmp-name" }, el("span", { text: names[key] }), el("small", { text: ref.value === "-" ? "자료 없음" : `${ref.value}${row.unit}` })),
+        el("span", { class: "cmp-name" }, el("span", { text: names[key] }),
+          el("small", { text: ref.value === "-" ? `${refDesc[key]} · 자료 없음` : `${refDesc[key]} ${ref.value}${row.unit}` })),
         el("span", { class: "cmp-values" }, view.primary === "ratio" ? [ratioEl, diffEl] : [diffEl, ratioEl]),
         gauge(ref.ratio));
     });

@@ -115,7 +115,7 @@ def test_full_pipeline():
     assert res["summary"]["gotDays"] == 7
     cmp_all = res["comparison"]["all"]
     labels = [r[0] for r in cmp_all["rows"]]
-    assert labels == ["평균 기온(℃)", "최고 기온(℃)", "최저 기온(℃)", "누적 강수량(mm)", "일조 시간(hr)"], labels
+    assert labels == ["평균 기온(℃)", "최고 기온(℃)", "최저 기온(℃)", "누적 강수량(mm)", "일조 시간(hr)", "강우일수(일)"], labels
     assert set(res["comparison"]) == set(pipeline.LAYOUTS)
     # 평년값: 평균 기온 18.0 (7일 평균), 강수 4.0*7=28.0, 일조 5.5*7=38.5
     row = dict(zip(cmp_all["columns"], cmp_all["rows"][0]))
@@ -142,6 +142,26 @@ def test_compute_mode_uses_cache():
     assert res["ok"] and res["normal30"] and len(res["normal30"]["rows"]) == 30
     pipeline.run_analysis(req, "TESTKEY")
     assert CALLS["daily"] - first <= 1, "두 번째 조회는 캐시를 써야 함 (진단용 원문 1회 제외)"
+
+
+def test_rain_days():
+    """강우일수 = 일강수량 0.1mm 이상인 날 수, 제주 전체는 지점별 강우일수의 평균"""
+    df, _ = kma_api.fetch_all_stations(dt.date(2025, 7, 1), dt.date(2025, 7, 20), "K", "apihub", [184, 189])
+    for stn in (184, 189):
+        sub = df[df["stn_id"] == stn]
+        assert int(sub["rainDays"].sum()) == int((sub["sumRn"] >= 0.1).sum())
+    from weather.processing import jeju_daily_mean, aggregate_period
+    daily = jeju_daily_mean(df)
+    jeju = aggregate_period(daily, ["강우일수"])["강우일수"]
+    per_station = df.groupby("stn_id")["rainDays"].sum().mean()
+    assert abs(jeju - per_station) < 1e-9, (jeju, per_station)
+    # 평년 강우일수: 평년값 API 에 없으므로 30년 실측으로 대체 계산되어야 함
+    req = pipeline.validate_request({"start": "2025-07-01", "end": "2025-07-05", "metrics": ["강우일수"],
+                                     "stations": ["제주"], "normalMode": "api"})
+    res = pipeline.run_analysis(req, "K")
+    row = dict(zip(res["comparison"]["all"]["columns"], res["comparison"]["all"]["rows"][0]))
+    assert row["평년 평균"] != "-", row
+    assert any("강우일수" in n["text"] and "30년 실측" in n["text"] for n in res["notices"]), res["notices"]
 
 
 if __name__ == "__main__":

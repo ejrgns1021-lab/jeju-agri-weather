@@ -27,6 +27,7 @@
   --t-min: #2f6f9f;  --t-min-soft: #e5eff7;
   --t-rain: #2a7fb8; --t-rain-soft: #e3f0f8;
   --t-sun: #c98a12;  --t-sun-soft: #faf1dc;
+  --t-rdays: #3b8f8a; --t-rdays-soft: #e2f2f0;
 
   /* 증감 색 (지표 성격별로 다르게 적용) */
   --warm: #c2410c;
@@ -56,6 +57,7 @@
     --t-avg: #f0a062; --t-avg-soft: #33261b; --t-max: #ef7f76; --t-max-soft: #352120;
     --t-min: #6aa8d8; --t-min-soft: #1b2a36; --t-rain: #63aee0; --t-rain-soft: #18293a;
     --t-sun: #e7b84f; --t-sun-soft: #33291a;
+    --t-rdays: #66c2bb; --t-rdays-soft: #17302d;
     --warm: #f59a6a; --cool: #74aee6; --wet: #6fb2e6; --dry: #e0b45a; --bright: #e8c063; --dim: #9fb0bf;
     --info-bg: #182736; --info-line: #2e4d6b; --info-ink: #a9cdee;
     --warn-bg: #2f2716; --warn-line: #6b5426; --warn-ink: #f0d39a;
@@ -214,6 +216,7 @@ input[type=date], input[type=password], select {
 .toggle.tone-min input:checked + .toggle-ui .ic { color: var(--t-min); }
 .toggle.tone-rain input:checked + .toggle-ui .ic { color: var(--t-rain); }
 .toggle.tone-sun input:checked + .toggle-ui .ic { color: var(--t-sun); }
+.toggle.tone-rdays input:checked + .toggle-ui .ic { color: var(--t-rdays); }
 .toggle input:focus-visible + .toggle-ui { outline: 3px solid color-mix(in srgb, var(--sky) 45%, transparent); outline-offset: 2px; }
 
 /* 평년·소스 옵션 */
@@ -309,6 +312,7 @@ input[type=date], input[type=password], select {
 .metric-card.tone-min { --tone: var(--t-min); --tone-soft: var(--t-min-soft); }
 .metric-card.tone-rain { --tone: var(--t-rain); --tone-soft: var(--t-rain-soft); }
 .metric-card.tone-sun { --tone: var(--t-sun); --tone-soft: var(--t-sun-soft); }
+.metric-card.tone-rdays { --tone: var(--t-rdays); --tone-soft: var(--t-rdays-soft); }
 .metric-head { display: flex; align-items: center; gap: 10px; }
 .metric-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--tone-soft); color: var(--tone); display: grid; place-items: center; }
 .metric-name { font-weight: 700; font-size: 15px; }

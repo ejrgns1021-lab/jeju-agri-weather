@@ -303,7 +303,8 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
             "recentRange": f"{min(recent_years)}~{max(recent_years)}",
             "normalNote": normal_note,
             "normalIncluded": bool(normal_cnt) and max(normal_cnt.values()) > 0,
-            "aggDesc": "기온은 기간 평균, 누적 강수량·일조 시간은 기간 합산" + (" / 최고·최저 기온은 기간 극값" if extreme else ""),
+            "aggDesc": "기온은 기간 평균, 누적 강수량·일조 시간은 기간 합산, 강우일수는 일강수량 0.1mm 이상인 날 수"
+                       + (" / 최고·최저 기온은 기간 극값" if extreme else ""),
         },
         "layouts": [[k, v] for k, v in LAYOUTS.items()],   # 순서 유지를 위해 목록으로 전달
         "comparison": comparison_layouts,
