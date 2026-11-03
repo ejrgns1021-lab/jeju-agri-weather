@@ -28,6 +28,7 @@
   --t-rain: #2a7fb8; --t-rain-soft: #e3f0f8;
   --t-sun: #c98a12;  --t-sun-soft: #faf1dc;
   --t-rdays: #3b8f8a; --t-rdays-soft: #e2f2f0;
+  --t-night: #5a5fc4; --t-night-soft: #ebebfa;
 
   /* 증감 색 (지표 성격별로 다르게 적용) */
   --warm: #c2410c;
@@ -58,6 +59,7 @@
     --t-min: #6aa8d8; --t-min-soft: #1b2a36; --t-rain: #63aee0; --t-rain-soft: #18293a;
     --t-sun: #e7b84f; --t-sun-soft: #33291a;
     --t-rdays: #66c2bb; --t-rdays-soft: #17302d;
+    --t-night: #9da1f0; --t-night-soft: #23243f;
     --warm: #f59a6a; --cool: #74aee6; --wet: #6fb2e6; --dry: #e0b45a; --bright: #e8c063; --dim: #9fb0bf;
     --info-bg: #182736; --info-line: #2e4d6b; --info-ink: #a9cdee;
     --warn-bg: #2f2716; --warn-line: #6b5426; --warn-ink: #f0d39a;
@@ -217,6 +219,7 @@ input[type=date], input[type=password], select {
 .toggle.tone-rain input:checked + .toggle-ui .ic { color: var(--t-rain); }
 .toggle.tone-sun input:checked + .toggle-ui .ic { color: var(--t-sun); }
 .toggle.tone-rdays input:checked + .toggle-ui .ic { color: var(--t-rdays); }
+.toggle.tone-night input:checked + .toggle-ui .ic { color: var(--t-night); }
 .toggle input:focus-visible + .toggle-ui { outline: 3px solid color-mix(in srgb, var(--sky) 45%, transparent); outline-offset: 2px; }
 
 /* 평년·소스 옵션 */
@@ -313,6 +316,7 @@ input[type=date], input[type=password], select {
 .metric-card.tone-rain { --tone: var(--t-rain); --tone-soft: var(--t-rain-soft); }
 .metric-card.tone-sun { --tone: var(--t-sun); --tone-soft: var(--t-sun-soft); }
 .metric-card.tone-rdays { --tone: var(--t-rdays); --tone-soft: var(--t-rdays-soft); }
+.metric-card.tone-night { --tone: var(--t-night); --tone-soft: var(--t-night-soft); }
 .metric-head { display: flex; align-items: center; gap: 10px; }
 .metric-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--tone-soft); color: var(--tone); display: grid; place-items: center; }
 .metric-name { font-weight: 700; font-size: 15px; }
@@ -502,4 +506,29 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation-duration: 3s; }
   .toast, .settings, .switch-ui, .switch-ui::after { transition: none; }
+}
+
+/* ---------------------------------------------------------------- v6.8: 순별 집계 · 엑셀 · 프리뷰 표시 */
+.results-bar { display: grid; gap: 10px; }
+.excel-all { justify-self: end; }
+.dekad-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.dekad-head .card-head { margin-bottom: 0; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; color: var(--brand); background: var(--brand-soft); padding: 2px 8px; border-radius: 999px; margin-left: 4px; }
+.pill:empty { display: none; }
+.switch.big { padding: 10px 14px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-2); font-weight: 700; color: var(--ink); align-items: center; }
+.switch.big .switch-ui { margin-top: 0; }
+.switch.big:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+.dekad-body { display: grid; gap: 12px; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.sub-title { margin: 6px 0 0; font-size: 14px; font-weight: 700; color: var(--ink-2); }
+.sub-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.sub-row .field.inline { margin-bottom: 0; }
+.excel-btn { margin-top: 6px; }
+.preview-banner {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; text-align: center; font-size: 12px; font-weight: 700;
+  padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); background: #7a4b00; color: #fff3d6;
+}
+@media (max-width: 900px) {
+  .dekad-head { flex-direction: column; }
+  .switch.big { width: 100%; }
+  .excel-all { justify-self: stretch; }
 }

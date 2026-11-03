@@ -73,9 +73,13 @@ METRICS: Dict[str, Dict[str, Any]] = {
     # v6.7: 강우일수 — API 에 항목이 없으므로 일강수량이 RAIN_DAY_MIN_MM 이상인 날을 1일로 집계(파생 지표)
     "강우일수": {"col": "rainDays", "unit": "일", "agg": "sum", "kind": "days", "derived_from": "sumRn",
               "daily": [], "norm": [], "desc_in": [], "desc_ex": []},
+    # v6.8: 열대야 일수 — 일 최저기온이 TROPICAL_NIGHT_MIN_C 이상인 날을 1일로 집계(파생 지표)
+    "열대야 일수": {"col": "tropicalNights", "unit": "일", "agg": "sum", "kind": "days", "derived_from": "minTa",
+                "daily": [], "norm": [], "desc_in": [], "desc_ex": []},
 }
 METRIC_COLS: List[str] = [m["col"] for m in METRICS.values()]
 RAIN_DAY_MIN_MM = 0.1   # 기상청 강수일수 기준(일강수량 0.1mm 이상)
+TROPICAL_NIGHT_MIN_C = 25.0   # 열대야 기준(일 최저기온 25.0℃ 이상)
 
 
 def ensure_metric_cols(df: pd.DataFrame) -> pd.DataFrame:
@@ -87,11 +91,17 @@ def ensure_metric_cols(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
-    """관측 일자료에서 파생 지표 계산: 강우일수 = 일강수량 ≥ 0.1mm 이면 1, 아니면 0 (강수 결측일은 빈 값)"""
+    """관측 일자료에서 파생 지표 계산 (원본 값이 결측인 날은 빈 값)
+      - 강우일수  : 일강수량 ≥ 0.1mm 이면 1, 아니면 0
+      - 열대야 일수: 일 최저기온 ≥ 25.0℃ 이면 1, 아니면 0
+    """
     ensure_metric_cols(df)
     if "sumRn" in df.columns:
         rn = pd.to_numeric(df["sumRn"], errors="coerce")
         df["rainDays"] = np.where(rn.isna(), np.nan, (rn >= RAIN_DAY_MIN_MM).astype(float))
+    if "minTa" in df.columns:
+        tn = pd.to_numeric(df["minTa"], errors="coerce")
+        df["tropicalNights"] = np.where(tn.isna(), np.nan, (tn >= TROPICAL_NIGHT_MIN_C).astype(float))
     return df
 BASE_COLS: List[str] = ["date", "stn_id", "stn_name"]
 
@@ -618,6 +628,7 @@ def standardize_daily(raw: pd.DataFrame, source: str, stn_default: int,
         out.loc[observed & out["sumRn"].isna(), "sumRn"] = 0.0
     add_derived_metrics(out)
     mapping["강우일수"] = f"RN_DAY≥{RAIN_DAY_MIN_MM}mm" if mapping.get("누적 강수량") else None
+    mapping["열대야 일수"] = f"TA_MIN≥{TROPICAL_NIGHT_MIN_C}℃" if mapping.get("최저 기온") else None
 
     out = out.dropna(subset=["date"]).drop_duplicates(subset=["date", "stn_id"])
     out = out.sort_values(["date", "stn_id"]).reset_index(drop=True)

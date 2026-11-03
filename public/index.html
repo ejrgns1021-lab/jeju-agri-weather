@@ -132,11 +132,16 @@
             <div><dt>평년 평균</dt><dd>1991~2020년 평년값 기준 동일 기간 값</dd></div>
             <div><dt>편차 / 비율</dt><dd>해당 연도 − 기준값 / 해당 연도 ÷ 기준값 × 100(%)</dd></div>
             <div><dt>강우일수</dt><dd>일강수량 0.1mm 이상인 날 수 (제주 전체는 4개 지점 평균)</dd></div>
+            <div><dt>열대야 일수</dt><dd>일 최저기온 25.0℃ 이상인 날 수 (제주 전체는 4개 지점 평균)</dd></div>
+            <div><dt>순별 집계</dt><dd>조회 후 '순별 데이터 집계 보기'를 켜면 상·중·하순별 비교표와 엑셀 저장</dd></div>
           </dl>
         </section>
 
         <section id="results" class="results" hidden>
-          <div id="summary" class="summary"></div>
+          <div class="results-bar">
+            <div id="summary" class="summary"></div>
+            <button id="excel-all" type="button" class="btn ghost small excel-all"><i data-icon="file-spreadsheet"></i><span>전체 결과 엑셀 저장</span></button>
+          </div>
 
           <section class="block">
             <div class="block-head">
@@ -160,6 +165,28 @@
             </details>
           </section>
 
+          <!-- 순별(상·중·하순) 집계: 토글로 즉시 보이기/숨기기 (재조회 없음) -->
+          <section class="card dekad-card" id="dekad-card" hidden>
+            <div class="dekad-head">
+              <div class="card-head">
+                <h3><i data-icon="calendar-range"></i> 순별(상·중·하순) 집계 <span class="pill" id="dekad-count"></span></h3>
+                <p class="muted small">상순 1~10일 · 중순 11~20일 · 하순 21일~말일, 순마다 전년·최근 5년·평년과 비교</p>
+              </div>
+              <label class="switch big"><input id="dekad-toggle" type="checkbox"><span class="switch-ui"></span><span>순별 데이터 집계 보기</span></label>
+            </div>
+            <div id="dekad-body" class="dekad-body" hidden>
+              <p id="dekad-note" class="muted small"></p>
+              <h4 class="sub-title">순별 요약 (해당 연도)</h4>
+              <div id="dekad-overview"></div>
+              <div class="sub-row">
+                <h4 class="sub-title">지표별 순별 비교</h4>
+                <label class="field inline"><span>지표</span><select id="dekad-metric"></select></label>
+              </div>
+              <div id="dekad-compare"></div>
+              <button id="dekad-excel" type="button" class="btn primary wide excel-btn"><i data-icon="file-spreadsheet"></i><span>순별 데이터 엑셀(.xlsx) 다운로드</span></button>
+            </div>
+          </section>
+
           <section class="card">
             <div class="tabs" role="tablist">
               <button type="button" class="tab active" data-tab="station"><i data-icon="map-pin" class="ic-sm"></i>지점별</button>
@@ -179,6 +206,8 @@
       </main>
     </div>
   </div>
+
+  <div id="preview-banner" class="preview-banner" hidden>테스트(프리뷰) 버전입니다 · 실제 서비스와 별개로 동작합니다</div>
 
   <!-- 조회 중 -->
   <div id="loading" class="loading" hidden>
