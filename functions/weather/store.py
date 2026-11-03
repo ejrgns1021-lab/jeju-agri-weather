@@ -30,7 +30,9 @@ log = logging.getLogger(__name__)
 CACHE_VERSION = 2                  # 저장 형식·지표 구성이 바뀌면 올려서 기존 저장분을 무시 (v2: 풍속 제거)
 DAILY_COLLECTION = "kma_daily"
 NORMALS_COLLECTION = "kma_normals"
-FINALIZED_AFTER_DAYS = 3           # 기상청 일자료는 최근 며칠간 수정될 수 있으므로 이보다 지난 구간만 저장
+FINALIZED_AFTER_DAYS = 3           # 기상청 일자료는 최근 며칠간 수정될 수 있으므로 이보다 지난 구간은 '확정'(영구 저장)
+RECENT_TTL_SEC = 6 * 3600          # 확정 전 최근 자료·결과는 6시간 동안만 재사용
+RESULTS_COLLECTION = "results"
 KST = dt.timezone(dt.timedelta(hours=9))
 
 _client: Any = None
@@ -166,7 +168,21 @@ def _payload_to_df(payload: Dict[str, Any]) -> Optional[pd.DataFrame]:
     return df
 
 
-def get_df(collection: str, *key_parts: Any) -> Optional[pd.DataFrame]:
+def _is_fresh(payload: Dict[str, Any], recent_ttl: Optional[int]) -> bool:
+    """확정 자료(final 이 없거나 True)는 항상 유효, 최근 자료는 recent_ttl 초 안에 저장된 것만 유효"""
+    if payload.get("final", True) is not False:
+        return True                      # 확정 자료 (이전 버전 저장분도 모두 확정 자료만 저장됨)
+    if recent_ttl is None:
+        return False                     # 최근 자료 재사용을 허용하지 않는 호출
+    saved = payload.get("saved_at")
+    if not isinstance(saved, dt.datetime):
+        return False
+    if saved.tzinfo is None:
+        saved = saved.replace(tzinfo=dt.timezone.utc)
+    return (dt.datetime.now(dt.timezone.utc) - saved).total_seconds() < recent_ttl
+
+
+def get_df(collection: str, *key_parts: Any, recent_ttl: Optional[int] = None) -> Optional[pd.DataFrame]:
     client = _get_client()
     if client is None:
         return None
@@ -174,7 +190,10 @@ def get_df(collection: str, *key_parts: Any) -> Optional[pd.DataFrame]:
         snap = client.collection(collection).document(_doc_id(*key_parts)).get()
         if not snap.exists:
             return None
-        return _payload_to_df(snap.to_dict() or {})
+        payload = snap.to_dict() or {}
+        if not _is_fresh(payload, recent_ttl):
+            return None
+        return _payload_to_df(payload)
     except Exception as exc:  # 저장소 장애가 조회를 막지 않도록
         log.warning("Firestore 읽기 실패(%s): %s", collection, exc)
         return None
@@ -240,3 +259,45 @@ def job_finish(job_id: str, result: Optional[Dict[str, Any]] = None, error: Opti
     else:
         job_update(job_id, force=True, status="done", pct=100, result=payload)
     _job_last_write.pop(job_id, None)
+
+
+# ---------------------------------------------------------------------
+# 4) 조회 결과 전체 저장 — 같은 조건으로 다시 조회하면 기상청 호출 없이 바로 표시
+#    (종료일이 3일 이상 지난 조회는 영구, 최근 기간 조회는 6시간 동안 재사용)
+# ---------------------------------------------------------------------
+def result_key(query: Dict[str, Any]) -> str:
+    raw = json.dumps(query, ensure_ascii=False, sort_keys=True, default=str)
+    return "q_" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def result_get(key: str) -> Optional[Dict[str, Any]]:
+    client = _get_client()
+    if client is None:
+        return None
+    try:
+        snap = client.collection(RESULTS_COLLECTION).document(key).get()
+        if not snap.exists:
+            return None
+        payload = snap.to_dict() or {}
+        if payload.get("v") != CACHE_VERSION or not _is_fresh(payload, RECENT_TTL_SEC):
+            return None
+        return json.loads(payload["data"])
+    except Exception as exc:
+        log.warning("저장된 결과 읽기 실패: %s", exc)
+        return None
+
+
+def result_put(key: str, result: Dict[str, Any], final: bool) -> None:
+    client = _get_client()
+    if client is None:
+        return
+    try:
+        data = json.dumps(result, ensure_ascii=False, default=str)
+        if len(data.encode("utf-8")) > JOB_RESULT_MAX_BYTES:
+            return
+        client.collection(RESULTS_COLLECTION).document(key).set({
+            "v": CACHE_VERSION, "data": data, "final": bool(final),
+            "saved_at": dt.datetime.now(dt.timezone.utc),
+        })
+    except Exception as exc:
+        log.warning("결과 저장 실패: %s", exc)

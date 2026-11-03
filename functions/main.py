@@ -93,8 +93,19 @@ def jejuweather(req: https_fn.CallableRequest) -> Dict[str, Any]:
     store.job_update(job_id, force=True, status="running", pct=0, stage="조회 준비", detail="요청을 받았습니다", elapsed=0)
     try:
         query = validate_request(data.get("query") or {})
+        # 같은 조건으로 이미 조회한 결과가 저장돼 있으면 기상청 호출 없이 바로 반환
+        rkey = store.result_key(query)
+        saved = store.result_get(rkey)
+        if saved:
+            saved.setdefault("notices", []).insert(0, {
+                "level": "info", "text": f"저장된 조회 결과를 바로 불러왔습니다. (처음 조회 시각 {saved.get('fetchedAt', '-')})"})
+            store.job_finish(job_id, result=saved)
+            return saved
         result = run_analysis(query, api_key, progress=progress)
         store.job_finish(job_id, result=result)
+        # 일부 지점 실패 등 경고가 없는 완전한 결과만 저장
+        if result.get("ok") and not any(n.get("level") in ("warning", "error") for n in result.get("notices", [])):
+            store.result_put(rkey, result, final=store.is_finalized(query["end"].strftime("%Y%m%d")))
         return result
     except InputError as exc:
         raise fail(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, str(exc))
