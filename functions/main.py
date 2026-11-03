@@ -109,7 +109,7 @@ def jejuweather(req: https_fn.CallableRequest) -> Dict[str, Any]:
         raise fail(https_fn.FunctionsErrorCode.INTERNAL, f"처리 중 오류가 발생했습니다: {_redact(exc, api_key)}")
 
 
-@https_fn.on_call(secrets=[APP_PASSWORD], invoker="public", memory=options.MemoryOption.MB_256, timeout_sec=30, concurrency=20)
+@https_fn.on_call(secrets=[APP_PASSWORD], invoker="public", memory=options.MemoryOption.MB_512, cpu=1, timeout_sec=30, concurrency=20)
 def jejuprogress(req: https_fn.CallableRequest) -> Dict[str, Any]:
     """화면이 1~2초마다 호출: 진행 상황, 완료 시 결과(60초가 넘어 본 요청이 끊긴 경우 대비)"""
     data = req.data or {}
