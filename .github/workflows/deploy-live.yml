@@ -1,0 +1,50 @@
+# 라이브(실제 서비스) 배포 — 자동 실행 없음. 승인 후 main 병합이 끝난 뒤 깃허브 Actions 화면에서 직접 실행
+name: 라이브 배포 (main, 수동)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "라이브에 배포하려면 DEPLOY 를 입력하세요"
+        required: true
+
+concurrency:
+  group: live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'DEPLOY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 백엔드 테스트 (실패하면 배포 중단)
+        working-directory: functions
+        run: |
+          pip install -q -r requirements.txt
+          python tests/test_backend.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Firebase CLI 설치
+        run: npm install -g firebase-tools@14
+
+      - name: 배포용 인증 정보
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+
+      - name: 라이브 배포
+        run: |
+          cd functions && python -m venv venv && ./venv/bin/pip install -q -r requirements.txt && cd ..
+          firebase deploy --project jeju-agri-weather --force --non-interactive

@@ -82,10 +82,24 @@ firebase emulators:start --only functions,hosting
 
 ## 개발·배포 절차 (v6.8부터)
 1. 모든 작업은 `dev` 브랜치에서 진행 (`main` 직접 수정·배포 금지)
-2. 테스트 배포: Cloud Shell에서 `git checkout dev && bash scripts/deploy-preview.sh`
+2. 테스트 배포: `dev`에 올리면 GitHub Actions가 자동 실행 (수동: Cloud Shell에서 `bash scripts/deploy-preview.sh`)
    - 서버 함수는 `logindev / jejuweatherdev / jejuprogressdev`(codebase `dev`)로 따로 배포, 웹페이지는 Hosting 임시 채널 `preview-test`(7일 만료)
    - **라이브 사이트·라이브 함수는 변경되지 않음**
-3. 프리뷰 주소에서 확인·승인 후에만 `dev` → `main` 병합, 그 다음 라이브 배포(`firebase deploy`)
+3. 프리뷰 주소에서 확인·승인 후에만 `dev` → `main` 병합, 그 다음 Actions의 '라이브 배포 (main, 수동)' 실행
+
+## 자동 배포 (GitHub Actions) — Cloud Shell 없이 배포
+- **프리뷰**: `dev` 브랜치에 올리면 자동 실행 → 저장소 **Actions** 탭의 '프리뷰 배포 (dev)' 결과 화면에 프리뷰 주소 표시
+- **라이브**: 자동 실행 없음. 승인 후 `main` 병합 → Actions 탭 → '라이브 배포 (main, 수동)' → Run workflow → `DEPLOY` 입력
+- 두 작업 모두 백엔드 테스트가 실패하면 배포하지 않음
+
+### 처음 한 번: 배포용 서비스 계정 키 등록
+1. [Google Cloud 콘솔 > 서비스 계정 만들기](https://console.cloud.google.com/iam-admin/serviceaccounts/create?project=jeju-agri-weather)
+   - 이름: `github-deploy`
+   - 역할 추가: **편집자**, **Cloud Functions 관리자**, **Cloud Run 관리자**, **Secret Manager 관리자**, **서비스 계정 사용자**
+2. 만든 계정 클릭 → **키** 탭 → 키 추가 → 새 키 만들기 → **JSON** → 파일이 내려받아짐
+3. [깃허브 저장소 > Settings > Secrets and variables > Actions](https://github.com/ejrgns1021-lab/jeju-agri-weather/settings/secrets/actions) → New repository secret
+   - Name: `FIREBASE_SERVICE_ACCOUNT` / Secret: 내려받은 JSON 파일 내용 전체를 붙여넣기
+4. 내려받은 JSON 파일은 PC에서 삭제 (깃허브에 암호화되어 저장됨)
 
 ## 변경 내역
 - **v6.8** (dev, 승인 대기): **열대야 일수** 지표(일 최저기온 25.0℃ 이상인 날, 평년은 30년 실측), **순별(상·중·하순) 집계** 토글 — 순마다 전년·최근 5년·평년 비교, 부분 순 표시, **순별 엑셀(.xlsx) 다운로드**, 전체 결과 엑셀 저장, 프리뷰 배포 스크립트. 기존 지표·일별 계산 로직 변경 없음

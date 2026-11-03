@@ -13,6 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PROJECT="${PROJECT:-jeju-agri-weather}"
 CHANNEL="${CHANNEL:-preview-test}"
+PYTHON="${PYTHON:-python3.12}"   # GitHub Actions 에서는 PYTHON=python 으로 실행
 WORK=".preview-build"
 
 rm -rf "$WORK" && mkdir -p "$WORK"
@@ -46,9 +47,12 @@ JSON
 
 cd "$WORK"
 echo "▶ 1/2 dev 함수 배포 (라이브 함수는 변경되지 않음)"
-python3.12 -m venv functions-dev/venv >/dev/null
+"$PYTHON" -m venv functions-dev/venv >/dev/null
 functions-dev/venv/bin/pip install -q -r functions-dev/requirements.txt
-firebase deploy --only functions:dev --project "$PROJECT" --force --non-interactive 2>&1 | grep -E "✔  functions\[|Error" || true
+firebase deploy --only functions:dev --project "$PROJECT" --force --non-interactive
 
 echo "▶ 2/2 웹페이지 임시 채널 배포 ($CHANNEL)"
-firebase hosting:channel:deploy "$CHANNEL" --project "$PROJECT" --expires 7d --non-interactive 2>&1 | grep -E "Channel URL|expire|Error" || true
+firebase hosting:channel:deploy "$CHANNEL" --project "$PROJECT" --expires 7d --non-interactive --json > channel.json
+URL="$("$PYTHON" -c "import json; r=json.load(open('channel.json'))['result']; print(next(iter(r.values()))['url'])")"
+echo "PREVIEW_URL=$URL"
+[ -n "${GITHUB_OUTPUT:-}" ] && echo "url=$URL" >> "$GITHUB_OUTPUT" || true

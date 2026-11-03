@@ -1,0 +1,55 @@
+# dev 브랜치에 올리면 자동으로 테스트(프리뷰) 배포 — 라이브 사이트·라이브 함수는 변경되지 않음
+name: 프리뷰 배포 (dev)
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+concurrency:
+  group: preview
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 백엔드 테스트
+        working-directory: functions
+        run: |
+          pip install -q -r requirements.txt
+          python tests/test_backend.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Firebase CLI 설치
+        run: npm install -g firebase-tools@14
+
+      - name: 배포용 인증 정보
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA_JSON" ]; then echo "::error::깃허브 Secret FIREBASE_SERVICE_ACCOUNT 가 없습니다 (README 의 자동 배포 설정 참고)"; exit 1; fi
+          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+
+      - name: 프리뷰 배포 (dev 함수 + Hosting 임시 채널)
+        id: deploy
+        env:
+          PYTHON: python
+        run: bash scripts/deploy-preview.sh
+
+      - name: 프리뷰 주소
+        run: |
+          echo "### 프리뷰 주소" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "(7일 후 만료 · 라이브 사이트와 별개)" >> "$GITHUB_STEP_SUMMARY"
