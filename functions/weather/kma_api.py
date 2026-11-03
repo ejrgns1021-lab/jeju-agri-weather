@@ -38,8 +38,9 @@ APIHUB_DAILY_URL = "https://apihub.kma.go.kr/api/typ01/url/kma_sfcdd3.php"
 APIHUB_NORMAL_URL = "https://apihub.kma.go.kr/api/typ01/url/sfc_norm1.php"
 DATAGOKR_DAILY_URL = "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
 
-REQUEST_TIMEOUT_SEC = 20
-MAX_RETRY = 2
+REQUEST_TIMEOUT_SEC = 20   # 응답(자료 수신) 대기
+CONNECT_TIMEOUT_SEC = 5    # 연결 대기: 막힌 연결을 오래 붙잡지 않고 빨리 새로 시도 (v6.6, 기존 20초)
+MAX_RETRY = 5              # 재시도 횟수 (v6.6, 기존 2 → 총 6회 시도)
 MAX_DAYS_PER_CALL = 365
 
 # 지표 정의: 표준 컬럼명, 단위, 집계 방법, 물리적 종류(kind), 후보 컬럼명, 범례 키워드
@@ -123,7 +124,7 @@ def _http_get(url: str, params: Dict[str, Any], timeout: int = REQUEST_TIMEOUT_S
     last_exc: Optional[Exception] = None
     for attempt in range(MAX_RETRY + 1):
         try:
-            resp = requests.get(url, params=params, timeout=timeout)
+            resp = requests.get(url, params=params, timeout=(CONNECT_TIMEOUT_SEC, timeout))
         except requests.exceptions.Timeout as exc:
             last_exc = exc
             time.sleep(1.0)
@@ -141,7 +142,7 @@ def _http_get(url: str, params: Dict[str, Any], timeout: int = REQUEST_TIMEOUT_S
             raise WeatherApiError(f"HTTP {resp.status_code} 오류: {resp.text[:200]}")
         return resp
 
-    raise WeatherApiTimeoutError(f"요청 시간 초과 ({timeout}초, {MAX_RETRY + 1}회 시도) - {last_exc}")
+    raise WeatherApiTimeoutError(f"요청 시간 초과 (연결 {CONNECT_TIMEOUT_SEC}초·응답 {timeout}초, {MAX_RETRY + 1}회 시도) - {last_exc}")
 
 
 def clean_numeric(series: pd.Series, kind: str) -> pd.Series:
@@ -662,7 +663,7 @@ def fetch_apihub_daily_text(stn_id: int, start_ymd: str, end_ymd: str, api_key: 
 def fetch_apihub_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
                        rain_missing_as_zero: bool = True) -> pd.DataFrame:
     cache_key = ("apihub", stn_id, start_ymd, end_ymd, int(rain_missing_as_zero))
-    cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key)
+    cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key, recent_ttl=fsc.RECENT_TTL_SEC)
     if cached is not None:
         return cached
     text = fetch_apihub_daily_text(stn_id, start_ymd, end_ymd, api_key)
@@ -672,8 +673,9 @@ def fetch_apihub_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
         if err:
             raise WeatherApiError(f"API허브 응답 오류: {err}")
         return empty_daily_frame()
-    if fsc.is_finalized(end_ymd):
-        fsc.put_df(fsc.DAILY_COLLECTION, std, *cache_key, meta={"stn_id": stn_id, "start": start_ymd, "end": end_ymd})
+    # 확정 자료(종료일 3일 경과)는 영구 저장, 최근 자료는 6시간 동안만 재사용
+    fsc.put_df(fsc.DAILY_COLLECTION, std, *cache_key,
+               meta={"stn_id": stn_id, "start": start_ymd, "end": end_ymd, "final": fsc.is_finalized(end_ymd)})
     return std
 
 
@@ -681,7 +683,7 @@ def fetch_apihub_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
 def fetch_datagokr_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str,
                          rain_missing_as_zero: bool = True) -> pd.DataFrame:
     cache_key = ("datagokr", stn_id, start_ymd, end_ymd, int(rain_missing_as_zero))
-    cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key)
+    cached = fsc.get_df(fsc.DAILY_COLLECTION, *cache_key, recent_ttl=fsc.RECENT_TTL_SEC)
     if cached is not None:
         return cached
     key = urllib.parse.unquote(api_key) if "%" in api_key else api_key
@@ -716,8 +718,9 @@ def fetch_datagokr_daily(stn_id: int, start_ymd: str, end_ymd: str, api_key: str
         return empty_daily_frame()
     raw = pd.DataFrame(items)
     std = standardize_daily(raw, "datagokr", stn_id, rain_missing_as_zero)
-    if fsc.is_finalized(end_ymd):
-        fsc.put_df(fsc.DAILY_COLLECTION, std, *cache_key, meta={"stn_id": stn_id, "start": start_ymd, "end": end_ymd})
+    # 확정 자료(종료일 3일 경과)는 영구 저장, 최근 자료는 6시간 동안만 재사용
+    fsc.put_df(fsc.DAILY_COLLECTION, std, *cache_key,
+               meta={"stn_id": stn_id, "start": start_ymd, "end": end_ymd, "final": fsc.is_finalized(end_ymd)})
     return std
 
 

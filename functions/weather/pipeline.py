@@ -183,13 +183,13 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         return {"ok": False, "params": params, "notices": notices + [{
             "level": "error", "text": "선택한 기간에 조회된 관측 자료가 없습니다. 기간과 API 키를 확인해 주세요."}]}
 
-    daily_raw_text = ""
+    # '진단' 탭용 원문(1일치)은 별도 스레드에서 받고, 결과 정리 시점까지 안 오면 생략 (조회를 지연시키지 않도록)
+    diag_pool = ThreadPoolExecutor(max_workers=1)
+    diag_future = None
     if source == "apihub":
-        try:
-            ymd = start.strftime("%Y%m%d")
-            daily_raw_text = fetch_apihub_daily_text(station_ids[0], ymd, ymd, api_key)
-        except WeatherApiError:
-            daily_raw_text = ""
+        ymd = start.strftime("%Y%m%d")
+        diag_future = diag_pool.submit(fetch_apihub_daily_text, station_ids[0], ymd, ymd, api_key)
+    diag_pool.shutdown(wait=False)
 
     # 2) 최근 5년 (첫 해 = 전년도)
     recent_years = [start.year - k for k in range(1, RECENT_YEARS + 1)]
@@ -253,6 +253,12 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
 
     # 4) 표 가공
     report(95, "비교표 가공", "편차·비율 계산 및 표 작성 중")
+    daily_raw_text = ""
+    if diag_future is not None:
+        try:
+            daily_raw_text = diag_future.result(timeout=3)
+        except Exception:   # 시간 초과·기상청 오류 시 진단 원문만 생략
+            daily_raw_text = ""
     comparison = build_comparison_table(current_vals, recent_vals, normal_vals, metric_names, start.year,
                                         extreme=extreme, decimals=1, prev=prev_vals)
     comparison_layouts = {key: table_json(format_comparison_for_display(comparison, start.year, layout_mode=key, decimals=1))
