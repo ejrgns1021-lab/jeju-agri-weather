@@ -19,8 +19,8 @@ const METRIC_VIEW = {
   "평균 기온": { icon: "thermometer", kind: "temp", tone: "avg", primary: "diff" },
   "최고 기온": { icon: "thermometer-sun", kind: "temp", tone: "max", primary: "diff" },
   "최저 기온": { icon: "thermometer-snowflake", kind: "temp", tone: "min", primary: "diff" },
-  "누적 강수량": { icon: "cloud-rain", kind: "rain", tone: "rain", primary: "ratio" },
-  "일조 시간": { icon: "sun", kind: "sun", tone: "sun", primary: "ratio" },
+  "누적 강수량": { icon: "cloud-rain", kind: "rain", tone: "rain", primary: "diff" },
+  "일조 시간": { icon: "sun", kind: "sun", tone: "sun", primary: "diff" },
   "강우일수": { icon: "umbrella", kind: "rain", tone: "rdays", primary: "diff" },
   "열대야 일수": { icon: "moon", kind: "temp", tone: "night", primary: "diff" },
 };
