@@ -217,6 +217,75 @@ def test_tropical_nights():
     assert edge["rainDays"].tolist()[:2] == [0.0, 1.0] and pd.isna(edge["rainDays"][2])
 
 
+# ---------------------------------------------------------------- 예보 (v6.9)
+def _fake_forecast_get(url, params=None, timeout=None):
+    import json as _j
+    from weather import forecast as fc
+    class R:
+        def __init__(self, obj, code=200): self.status_code = code; self.text = _j.dumps(obj, ensure_ascii=False); self._o = obj
+        def json(self): return self._o
+    ok = lambda items: R({"response": {"header": {"resultCode": "00"}, "body": {"items": {"item": items}, "totalCount": len(items)}}})
+    if url == fc.VILAGE_URL:
+        items = []
+        for d in ("20261105", "20261106", "20261107"):
+            for h in range(0, 24):
+                hh = f"{h:02d}00"
+                items += [{"fcstDate": d, "fcstTime": hh, "category": "TMP", "fcstValue": str(10 + h % 8)},
+                          {"fcstDate": d, "fcstTime": hh, "category": "SKY", "fcstValue": "4" if d == "20261106" else "1"},
+                          {"fcstDate": d, "fcstTime": hh, "category": "PTY", "fcstValue": "1" if d == "20261106" and 12 <= h < 18 else "0"},
+                          {"fcstDate": d, "fcstTime": hh, "category": "POP", "fcstValue": "70" if d == "20261106" else "10"},
+                          {"fcstDate": d, "fcstTime": hh, "category": "PCP", "fcstValue": "1.0mm" if d == "20261106" and 12 <= h < 18 else "강수없음"}]
+            if d != "20261105":
+                items += [{"fcstDate": d, "fcstTime": "0600", "category": "TMN", "fcstValue": "9.0"},
+                          {"fcstDate": d, "fcstTime": "1500", "category": "TMX", "fcstValue": "19.0"}]
+        return ok(items)
+    if url == fc.MID_LAND_URL:
+        it = {"regId": "11G00000"}
+        for n in range(4, 8):
+            it.update({f"rnSt{n}Am": 20, f"rnSt{n}Pm": 30, f"wf{n}Am": "맑음", f"wf{n}Pm": "구름많음"})
+        for n in range(8, 11):
+            it.update({f"rnSt{n}": 60, f"wf{n}": "흐리고 비"})
+        return ok([it])
+    if url == fc.MID_TA_URL:
+        it = {"regId": params["regId"]}
+        for n in range(4, 11):
+            it.update({f"taMin{n}": 12, f"taMax{n}": 18})
+        return ok([it])
+    if url == fc.WRN_URL:
+        return R({"result": {"status": 403, "message": "허용되지 않은 API 입니다."}}, 403)
+    raise AssertionError(url)
+
+
+def test_forecast():
+    import datetime as _dt
+    from weather import forecast as fc
+    orig = fc.requests.get
+    fc.requests.get = _fake_forecast_get
+    try:
+        now = _dt.datetime(2026, 11, 5, 8, 20, tzinfo=fc.KST)
+        assert fc.vilage_base(now) == ("20261105", "0800") and fc.vilage_base(now.replace(hour=8, minute=5)) == ("20261105", "0500")
+        assert fc.mid_tmfc(now).hour == 6 and fc.mid_tmfc(now.replace(hour=6, minute=10)).hour == 18
+        assert fc.latlon_to_grid(33.5141, 126.5297) == (53, 38)
+        res = fc.build_forecast("K", now=now)
+        assert [s["name"] for s in res["short"]["stations"]] == ["제주", "서귀포", "성산", "고산"]
+        days = res["short"]["jeju"]
+        assert days[0]["label"].startswith("오늘") and days[0]["minMaxPartial"]
+        d2 = days[1]
+        assert d2["tmin"] == 9.0 and d2["tmax"] == 19.0 and d2["pop"] == 70 and "비" in d2["pm"] and d2["am"] == "흐림"
+        assert d2["icon"] == "cloud-rain" and d2["rainMm"] == 6.0
+        mid = res["mid"]["days"]
+        assert mid[0]["date"] == "2026-11-09" and mid[0]["pop"] == 30 and mid[0]["am"] == "맑음"
+        assert mid[-1]["date"] == "2026-11-15" and mid[-1]["pm"] is None and mid[-1]["pop"] == 60
+        assert [p["name"] for p in mid[0]["stations"]] == ["제주", "서귀포", "성산", "고산"]
+        assert res["warn"] is None and "warn" in res["errors"] and "short" not in res["errors"]
+        txt = "o 강풍주의보 : 제주도(제주도남부, 제주도산지), 전라남도(신안군)\r\no 건조주의보 : 강원도(강릉시)\r\no 풍랑주의보 : 제주도남쪽먼바다"
+        assert fc.parse_warnings(txt) == [{"kind": "강풍주의보", "regions": "제주도(제주도남부, 제주도산지)"},
+                                          {"kind": "풍랑주의보", "regions": "제주도남쪽먼바다"}]
+        assert fc.parse_warnings("o 없음") == []
+    finally:
+        fc.requests.get = orig
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

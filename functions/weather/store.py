@@ -339,7 +339,7 @@ def forecast_get(key: str = "jeju") -> Optional[Dict[str, Any]]:
 
 
 def forecast_put(data: Dict[str, Any], key: str = "jeju") -> None:
-    partial = bool(data.get("errors"))
+    partial = bool(set(data.get("errors") or {}) - {"warn"})   # 특보만 못 받은 경우는 정상 주기로 저장
     ts = time.time()
     _forecast_mem[key] = (ts, FORECAST_ERR_TTL_SEC if partial else FORECAST_TTL_SEC, _copy(data))
     client = _get_client()

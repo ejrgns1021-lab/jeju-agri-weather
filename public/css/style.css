@@ -531,3 +531,39 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
   .switch.big { width: 100%; }
   .excel-all { justify-self: stretch; }
 }
+
+/* ---------------------------------------------------------------- 기상 예보 (v6.9) */
+.forecast { padding: 14px 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.forecast > *, .fc-body > * { min-width: 0; }
+.fc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fc-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: 15px; min-width: 0; }
+.fc-day { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fc-day b { color: var(--brand); }
+.fc-next { color: var(--ink-2); }
+.fc-temp { font-variant-numeric: tabular-nums; font-weight: 600; }
+.fc-sep { color: var(--line-strong); }
+.fc-ic { width: 20px; height: 20px; color: var(--sky); flex: none; }
+.fc-toggle { flex: none; }
+.fc-toggle .ic { transition: transform .2s; }
+.fc-toggle.open .ic { transform: rotate(180deg); }
+.fc-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.fc-h { margin: 6px 0 0; font-size: 14px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.fc-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.fc-table { border-collapse: collapse; width: 100%; font-size: 13px; text-align: center; }
+.fc-table th, .fc-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+.fc-table thead th { background: var(--surface-2); font-weight: 700; color: var(--ink-2); }
+.fc-table tbody th { background: var(--surface-2); text-align: left; position: sticky; left: 0; z-index: 1; }
+.fc-table tr:last-child th, .fc-table tr:last-child td { border-bottom: 0; }
+.fc-table td .fc-ic { display: block; margin: 0 auto 2px; }
+.fc-wx { font-weight: 600; }
+.fc-tt { font-variant-numeric: tabular-nums; }
+.fc-tt .lo { color: var(--cool); }
+.fc-tt .hi { color: var(--warm); }
+.fc-pop { color: var(--muted); font-size: 12px; }
+.fc-src { margin: 0; font-size: 12px; }
+.fc-warn { display: flex; gap: 10px; align-items: flex-start; background: var(--err-bg); border: 1px solid var(--err-line); color: var(--err-ink); border-radius: var(--radius-sm); padding: 10px 12px; }
+.fc-warn > .ic { flex: none; margin-top: 2px; }
+.fc-warn ul { margin: 4px 0 0; padding-left: 18px; }
+.fc-warn li.pre { opacity: .8; }
+.fc-base { font-weight: 400; font-size: 12px; }
+@media (max-width: 600px) { .fc-line { font-size: 14px; } .fc-sep { display: none; } .fc-toggle { width: 100%; justify-content: center; } }

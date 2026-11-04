@@ -106,6 +106,21 @@
 
       <!-- 결과 -->
       <main class="content">
+        <!-- 기상 예보 (v6.9): 한 줄 요약 + 접는 칸, 특보는 있을 때만 -->
+        <section id="forecast" class="card forecast" hidden aria-label="기상 예보">
+          <div id="fc-warn" class="fc-warn" role="alert" hidden></div>
+          <div class="fc-head">
+            <div id="fc-line" class="fc-line"></div>
+            <button id="fc-toggle" type="button" class="btn ghost small fc-toggle" aria-expanded="false" aria-controls="fc-body">지역별·주간 예보<i data-icon="chevron-down"></i></button>
+          </div>
+          <div id="fc-body" class="fc-body" hidden>
+            <h4 class="fc-h">단기예보 <span class="muted small">지점별 · 오전→오후 날씨, 최저/최고 기온, 강수확률(오전·오후)</span></h4>
+            <div id="fc-short"></div>
+            <h4 class="fc-h">중기예보 <span class="muted small">제주도 날씨 · 지점별 최저/최고 기온</span></h4>
+            <div id="fc-mid"></div>
+          </div>
+          <p id="fc-base" class="muted small fc-src"></p>
+        </section>
         <div class="period-hero">
           <span class="eyebrow"><i data-icon="calendar" class="ic-sm"></i> 분석 기간</span>
           <h2 id="period-title" class="period-title"></h2>
