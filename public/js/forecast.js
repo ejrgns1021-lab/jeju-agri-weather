@@ -10,6 +10,19 @@ const t = (v) => (v === null || v === undefined ? "-" : `${Math.round(v)}℃`);
 const pct = (v) => (v === null || v === undefined ? "-" : `${Math.round(v)}%`);
 let loading = null;
 
+// 날씨별 아이콘·색 (서버가 준 이름 → 화면용): 맑음=빨간 해, 비·소나기=파란 우산, 눈=하늘색 눈송이
+const WX_ICON = {
+  sun: ["sun", "wx-sun"],
+  "cloud-sun": ["cloud-sun", "wx-partly"],
+  cloud: ["cloud", "wx-cloud"],
+  "cloud-rain": ["umbrella", "wx-rain"],
+  snowflake: ["snowflake", "wx-snow"],
+};
+function wxIcon(name, extra = "") {
+  const [ic, cls] = WX_ICON[name] || WX_ICON.cloud;
+  return iconHtml(ic, `fc-ic ${cls} ${extra}`.trim());
+}
+
 function wxText(d) {
   if (d.am && d.pm && d.am !== d.pm) return `${d.am} → ${d.pm}`;
   return d.pm || d.am || d.wx || "-";
@@ -20,7 +33,7 @@ function summaryLine(days) {
     const name = d.label.split(" ")[0];
     const temp = `${t(d.tmin)} / ${t(d.tmax)}`;
     const pop = d.pop !== null && d.pop !== undefined ? ` · 강수 ${pct(d.pop)}` : "";
-    return `<span class="fc-day${i ? " fc-next" : ""}">${iconHtml(d.icon, "fc-ic")}<b>${esc(name)}</b> ${esc(wxText(d))} <span class="fc-temp">${temp}</span>${pop}</span>`;
+    return `<span class="fc-day${i ? " fc-next" : ""}">${wxIcon(d.icon, "fc-ic-lg")}<b>${esc(name)}</b> ${esc(wxText(d))} <span class="fc-temp">${temp}</span>${pop}</span>`;
   });
   return parts.join('<span class="fc-sep" aria-hidden="true">|</span>');
 }
@@ -35,7 +48,7 @@ function shortTable(short) {
       if (!d) return "<td>-</td>";
       const pops = [d.popAm, d.popPm].filter((x) => x !== null && x !== undefined);
       const rain = d.rainMm > 0 ? ` · ${d.rainMm >= 1 ? `${d.rainMm}mm` : "1mm 미만"}` : "";
-      return `<td>${iconHtml(d.icon, "fc-ic")}<div class="fc-wx">${esc(wxText(d))}</div>`
+      return `<td>${wxIcon(d.icon)}<div class="fc-wx">${esc(wxText(d))}</div>`
         + `<div class="fc-tt"><span class="lo">${t(d.tmin)}</span> / <span class="hi">${t(d.tmax)}</span></div>`
         + `<div class="fc-pop">강수 ${pops.length ? pops.map(pct).join("·") : pct(d.pop)}${rain}</div></td>`;
     }).join("");
@@ -48,7 +61,7 @@ function midTable(mid) {
   const days = mid.days || [];
   if (!days.length) return '<p class="muted small">중기예보 자료가 아직 없습니다.</p>';
   const head = days.map((d) => `<th>${esc(d.label)}</th>`).join("");
-  const wx = days.map((d) => `<td>${iconHtml(d.icon, "fc-ic")}<div class="fc-wx">${esc(wxText(d))}</div>`
+  const wx = days.map((d) => `<td>${wxIcon(d.icon)}<div class="fc-wx">${esc(wxText(d))}</div>`
     + `<div class="fc-pop">강수 ${[d.popAm, d.popPm].filter((x) => x !== null && x !== undefined).map(pct).join("·") || "-"}</div></td>`).join("");
   const names = (days[0].stations || []).map((s) => s.name);
   const temps = names.map((n) => `<tr><th scope="row">${esc(n)}</th>${days.map((d) => {
