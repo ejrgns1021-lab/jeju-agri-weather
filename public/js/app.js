@@ -3,8 +3,10 @@
 import { analyze, login, ApiError } from "./api.js";
 import { buildTable, copyForHwp, copyText, downloadCsv, toTsv } from "./tables.js";
 import { icon, hydrateIcons } from "./icons.js";
+import { renderDekad, refreshDekadCompare } from "./dekad.js";
+import { saveWorkbook } from "./excel.js";
 
-const METRICS = ["평균 기온", "최고 기온", "최저 기온", "누적 강수량", "일조 시간", "강우일수"];
+const METRICS = ["평균 기온", "최고 기온", "최저 기온", "누적 강수량", "일조 시간", "강우일수", "열대야 일수"];
 const STATIONS = { 제주: 184, 고산: 185, 성산: 188, 서귀포: 189 };
 const NORMAL_MODES = [
   ["api", "평년값 API", "권장 · 빠름"],
@@ -20,11 +22,12 @@ const METRIC_VIEW = {
   "누적 강수량": { icon: "cloud-rain", kind: "rain", tone: "rain", primary: "ratio" },
   "일조 시간": { icon: "sun", kind: "sun", tone: "sun", primary: "ratio" },
   "강우일수": { icon: "umbrella", kind: "rain", tone: "rdays", primary: "diff" },
+  "열대야 일수": { icon: "moon", kind: "temp", tone: "night", primary: "diff" },
 };
 const MOBILE = "(max-width: 900px)";
 const TOKEN_KEY = "jeju-weather-token";
 const PREFS_KEY = "jeju-weather-prefs";
-const PREFS_VERSION = 2; // v6.7: 강우일수 추가 — 이전에 저장된 지표 선택은 새 지표가 빠져 있으므로 초기화
+const PREFS_VERSION = 3; // v6.8: 열대야 일수 추가 — 이전에 저장된 지표 선택은 새 지표가 빠져 있으므로 초기화
 const MAX_DAYS = 366;
 
 const $ = (id) => document.getElementById(id);
@@ -349,7 +352,7 @@ function renderResult(res) {
     "대비(편차)=해당 연도−기준값, 대비(비율)=해당 연도÷기준값×100(%). '-' 는 자료 없음.";
   $("layout-switch").replaceChildren(...res.layouts.map(([key, label]) => el("button", {
     type: "button", "data-layout": key, text: label, role: "tab",
-    onclick: () => { state.layout = key; renderComparison(); },
+    onclick: () => { state.layout = key; renderComparison(); refreshDekadCompare(); },
   })));
   renderComparison();
 
@@ -375,6 +378,8 @@ function renderResult(res) {
       tableBlock(res.normal30, `평년30년_${tag}`));
   }
   $("yearly-tables").replaceChildren(...yearly);
+
+  renderDekad(res, { $, el, icon, tableBlock, toast, fmtDate, compact, layout: () => state.layout });
 
   const d = res.diagnostics || {};
   const diag = [el("p", { class: "muted small", text: "해당 연도 표준화 자료 (결측은 '-')" }), tableBlock(res.raw, `원자료_${tag}`)];
@@ -486,11 +491,46 @@ function setupTabs() {
 }
 
 // ---------------------------------------------------------------- 시작
+// ---------------------------------------------------------------- 전체 결과 엑셀 저장
+async function exportAll() {
+  const res = state.result;
+  if (!res || !res.ok) return;
+  const p = res.params;
+  const tag = `${compact(p.start)}_${compact(p.end)}`;
+  const info = [`조회 기간: ${fmtDate(p.start)} ~ ${fmtDate(p.end)}`, `관측 지점: ${(p.stations || []).join(", ")}`,
+    `평년 기준: ${res.summary.normalNote}`, `조회 시각: ${res.fetchedAt}`];
+  const sheets = [
+    { name: "비교표", title: "제주 전체(4개 지점 평균) 기상 비교표", notes: info, table: res.comparison.all },
+    { name: "산출 근거", table: res.basis },
+    { name: "지점별 요약", table: res.station },
+    ...p.metrics.filter((m) => res.daily && res.daily[m]).map((m) => ({ name: `일별_${m}`, table: res.daily[m] })),
+    { name: "연도별 동기간", table: res.recent },
+    { name: "평년 30년", table: res.normal30 },
+  ];
+  if (res.dekad) {
+    sheets.push({ name: "순별 요약", table: res.dekad.overview });
+    p.metrics.filter((m) => res.dekad.byMetric[m]).forEach((m) => sheets.push({ name: `순별_${m}`, table: res.dekad.byMetric[m].all }));
+  }
+  const btn = $("excel-all");
+  btn.disabled = true;
+  try {
+    await saveWorkbook(sheets, `제주_기상분석_${tag}.xlsx`);
+    toast("전체 결과를 엑셀 파일로 저장했습니다.");
+  } catch (e) {
+    toast(`엑셀 저장 실패: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function init() {
   $("login-form").addEventListener("submit", onLogin);
   $("logout-btn").addEventListener("click", logout);
   $("query-form").addEventListener("submit", onQuery);
   hydrateIcons();
+  // 테스트(프리뷰) 주소에서 열었을 때 표시 (예: jeju-agri-weather--preview-test-xxxx.web.app)
+  if (/--/.test(location.hostname)) $("preview-banner").hidden = false;
+  $("excel-all").addEventListener("click", exportAll);
   $("toggle-settings").addEventListener("click", openSettings);
   $("welcome-start").addEventListener("click", openSettings);
   $("close-settings").addEventListener("click", closeSettings);

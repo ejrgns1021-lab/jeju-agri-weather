@@ -17,3 +17,6 @@ firestore-debug.log
 ui-debug.log
 
 *.csv
+
+# 프리뷰 배포 임시 폴더
+.preview-build/

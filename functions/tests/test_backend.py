@@ -14,6 +14,7 @@ os.environ["FIRESTORE_CACHE"] = "0"
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from weather import auth, kma_api, pipeline  # noqa: E402
+import pandas as pd  # noqa: E402
 from weather.kma_api import DEFAULT_DAILY_COLS, DEFAULT_NORMAL_COLS, METRICS, STATIONS  # noqa: E402
 
 CALLS = {"daily": 0, "normal": 0}
@@ -32,7 +33,7 @@ def _daily_text(stn: int, tm1: str, tm2: str) -> str:
     lines = ["#START7777", "# " + " ".join(DEFAULT_DAILY_COLS)]
     while d <= e:
         rnd = random.Random(f"{stn}{d}")
-        ta = 15 + 8 * rnd.random()
+        ta = 15 + 8 * rnd.random() + (10 if d.month in (7, 8) else 0)   # 여름은 열대야가 생기도록
         vals = {c: "-9" for c in DEFAULT_DAILY_COLS}
         vals.update({"TM": d.strftime("%Y%m%d"), "STN": str(stn), "WS_AVG": "3.2", "TA_AVG": f"{ta:.1f}",
                      "TA_MAX": f"{ta + 4:.1f}", "TA_MIN": f"{ta - 4:.1f}", "HM_AVG": "70.0",
@@ -46,8 +47,8 @@ def _daily_text(stn: int, tm1: str, tm2: str) -> str:
 
 def _normal_text(mm1: int, dd1: int, mm2: int, dd2: int) -> str:
     lines = ["#START7777", "# " + " ".join(DEFAULT_NORMAL_COLS)]
-    d = dt.date(2021, mm1, dd1)
-    end = dt.date(2021, mm2, dd2)
+    d = dt.date(2020, mm1, dd1)
+    end = dt.date(2020, mm2, dd2)
     while d <= end:
         for stn in STATIONS.values():
             v = {"ST": "1", "STN": str(stn), "MM": str(d.month), "DD": str(d.day), "TA": "18.0", "TA_MAX": "22.0",
@@ -115,7 +116,7 @@ def test_full_pipeline():
     assert res["summary"]["gotDays"] == 7
     cmp_all = res["comparison"]["all"]
     labels = [r[0] for r in cmp_all["rows"]]
-    assert labels == ["평균 기온(℃)", "최고 기온(℃)", "최저 기온(℃)", "누적 강수량(mm)", "일조 시간(hr)", "강우일수(일)"], labels
+    assert labels == ["평균 기온(℃)", "최고 기온(℃)", "최저 기온(℃)", "누적 강수량(mm)", "일조 시간(hr)", "강우일수(일)", "열대야 일수(일)"], labels
     assert set(res["comparison"]) == set(pipeline.LAYOUTS)
     # 평년값: 평균 기온 18.0 (7일 평균), 강수 4.0*7=28.0, 일조 5.5*7=38.5
     row = dict(zip(cmp_all["columns"], cmp_all["rows"][0]))
@@ -162,6 +163,58 @@ def test_rain_days():
     row = dict(zip(res["comparison"]["all"]["columns"], res["comparison"]["all"]["rows"][0]))
     assert row["평년 평균"] != "-", row
     assert any("강우일수" in n["text"] and "30년 실측" in n["text"] for n in res["notices"]), res["notices"]
+
+
+def test_dekad_periods():
+    from weather.dekad import dekad_periods
+    D = dt.date
+    ps = dekad_periods(D(2024, 2, 5), D(2024, 3, 12))           # 윤년 2월, 부분 순 포함
+    assert [p["label"] for p in ps] == ["2024년 2월 상순", "2024년 2월 중순", "2024년 2월 하순", "2024년 3월 상순", "2024년 3월 중순"]
+    assert (ps[0]["start"], ps[0]["days"], ps[0]["partial"]) == (D(2024, 2, 5), 6, True)
+    assert (ps[2]["end"], ps[2]["days"], ps[2]["partial"]) == (D(2024, 2, 29), 9, False)
+    assert (ps[4]["end"], ps[4]["days"], ps[4]["partial"]) == (D(2024, 3, 12), 2, True)
+    assert dekad_periods(D(2025, 2, 21), D(2025, 2, 28))[0]["days"] == 8       # 평년 2월 하순
+    assert [p["days"] for p in dekad_periods(D(2025, 1, 1), D(2025, 1, 31))] == [10, 10, 11]
+    ys = dekad_periods(D(2025, 12, 25), D(2026, 1, 3))           # 연도를 넘는 기간
+    assert [p["label"] for p in ys] == ["2025년 12월 하순", "2026년 1월 상순"]
+    assert dekad_periods(D(2025, 5, 3), D(2025, 5, 1)) == []                   # 잘못된 기간
+
+
+def test_dekad_tables_consistent():
+    """순별 합계·평균이 기간 전체 값과 일치해야 함"""
+    req = pipeline.validate_request({"start": "2025-07-05", "end": "2025-08-14", "metrics": list(METRICS),
+                                     "stations": list(STATIONS), "normalMode": "api"})
+    res = pipeline.run_analysis(req, "TESTKEY")
+    dk = res["dekad"]
+    assert dk and dk["count"] == 5 and dk["partial"] == ["2025년 7월 상순", "2025년 8월 중순"], dk and dk["partial"]
+    ov = dk["overview"]
+    col = lambda name: ov["columns"].index(name)
+    rain_total = sum(float(r[col("누적 강수량(mm)")]) for r in ov["rows"])
+    cmp_row = {r[0]: r for r in res["comparison"]["all"]["rows"]}
+    tol = 0.05 * len(ov["rows"]) + 0.051   # 순별 값은 소수 첫째 자리 반올림 후 합산되므로 반올림 오차 허용
+    assert abs(rain_total - float(cmp_row["누적 강수량(mm)"][1])) <= tol, rain_total
+    tn_total = sum(float(r[col("열대야 일수(일)")]) for r in ov["rows"])
+    assert abs(tn_total - float(cmp_row["열대야 일수(일)"][1])) <= tol
+    # 일수 가중 평균 기온 = 전체 평균 기온
+    days = [int(r[col("일수")].split("일")[0]) for r in ov["rows"]]
+    tavg = sum(float(r[col("평균 기온(℃)")]) * d for r, d in zip(ov["rows"], days)) / sum(days)
+    assert abs(tavg - float(cmp_row["평균 기온(℃)"][1])) <= 0.06
+    for lay in ("combined", "all"):
+        tb = dk["byMetric"]["평균 기온"][lay]
+        assert all("nan" not in r for r in tb["rows"]), (lay, tb["columns"])
+    t = dk["byMetric"]["평균 기온"]["all"]
+    row = dict(zip(t["columns"], t["rows"][0]))
+    assert row["평년 평균"] != "-" and row["전년(2024)"] != "-", row
+    assert abs(float(row["평년 대비"]) - round(float(row["해당 연도(2025)"]) - float(row["평년 평균"]), 1)) < 1e-9
+
+
+def test_tropical_nights():
+    df, _ = kma_api.fetch_all_stations(dt.date(2025, 8, 1), dt.date(2025, 8, 20), "K", "apihub", [184])
+    assert int(df["tropicalNights"].sum()) == int((df["minTa"] >= 25.0).sum())
+    edge = pd.DataFrame({"minTa": [25.0, 24.9, None], "sumRn": [0.0, 0.1, None]})
+    kma_api.add_derived_metrics(edge)
+    assert edge["tropicalNights"].tolist()[:2] == [1.0, 0.0] and pd.isna(edge["tropicalNights"][2])
+    assert edge["rainDays"].tolist()[:2] == [0.0, 1.0] and pd.isna(edge["rainDays"][2])
 
 
 if __name__ == "__main__":

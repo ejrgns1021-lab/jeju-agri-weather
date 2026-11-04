@@ -24,6 +24,7 @@ from .kma_api import (
     fetch_apihub_daily_text,
     normals_for_period,
 )
+from .dekad import build_dekad_tables
 from .processing import (
     NORMAL_END_YEAR,
     NORMAL_START_YEAR,
@@ -209,15 +210,19 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     unmapped: List[str] = []
     normal_raw_text = ""
     normal_yearly_df = pd.DataFrame()
+    normal_daily_api: Optional[pd.DataFrame] = None   # 순별 집계용: 평년값 API 일별 평년(제주 전체)
+    normal_from_years: List[str] = []                 # 순별 집계용: 30년 실측으로 평년을 계산한 지표
     if normal_mode == "api":
         report(58, "평년값(1991~2020)", "기상청 평년값 API 조회 중")
         normal_df, unmapped, normal_raw_text = normals_for_period(start, end, api_key, station_ids)
-        normal_vals = aggregate_period(jeju_daily_mean(normal_df), metric_names, extreme=False)
+        normal_daily_api = jeju_daily_mean(normal_df)
+        normal_vals = aggregate_period(normal_daily_api, metric_names, extreme=False)
         normal_cnt = {n: 30 if not pd.isna(normal_vals[n]) else 0 for n in metric_names}
         normal_note = f"기상청 평년값 API ({NORMAL_START_YEAR}~{NORMAL_END_YEAR})"
         # 평년값 API 에서 얻지 못한 지표는 과거 30년 실측으로 대체 계산
         fallback = [n for n in metric_names if n in unmapped or pd.isna(normal_vals.get(n, float("nan")))]
         if fallback:
+            normal_from_years = list(fallback)
             prefetch(normal_years, 62, 92, "평년 보완: 1991~2020 실측 자료")
             normal_yearly_df = yearly_period_values(fetch_period, start, end, normal_years, fallback, extreme)
             fb_vals, fb_cnt = mean_of_years(normal_yearly_df, fallback)
@@ -233,6 +238,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
                 notices.append({"level": "info", "text": "평년값 API 응답에 없는 지표(" + ", ".join(fallback) +
                                 ")는 1991~2020년 30년 실측 자료로 대체 계산했습니다."})
     elif normal_mode == "compute":
+        normal_from_years = list(metric_names)
         prefetch(normal_years, 58, 92, "평년: 1991~2020 실측 30년 자료")
         normal_yearly_df = yearly_period_values(fetch_period, start, end, normal_years, metric_names, extreme)
         normal_vals, normal_cnt = mean_of_years(normal_yearly_df, metric_names)
@@ -253,6 +259,15 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
 
     # 4) 표 가공
     report(95, "비교표 가공", "편차·비율 계산 및 표 작성 중")
+    # 순별(상·중·하순) 비교표 — 실패해도 기존 결과에는 영향 없도록 분리
+    dekad = None
+    try:
+        report(97, "순별 집계", "상순·중순·하순으로 나누어 비교하는 중")
+        dekad = build_dekad_tables(start, end, metric_names, extreme, current_daily, fetch_period, recent_years,
+                                   normal_mode, normal_daily_api, normal_years, normal_from_years)
+    except Exception as exc:  # pragma: no cover - 방어용
+        notices.append({"level": "info", "text": f"순별 집계를 만들지 못했습니다: {exc}"})
+
     daily_raw_text = ""
     if diag_future is not None:
         try:
@@ -303,7 +318,8 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
             "recentRange": f"{min(recent_years)}~{max(recent_years)}",
             "normalNote": normal_note,
             "normalIncluded": bool(normal_cnt) and max(normal_cnt.values()) > 0,
-            "aggDesc": "기온은 기간 평균, 누적 강수량·일조 시간은 기간 합산, 강우일수는 일강수량 0.1mm 이상인 날 수"
+            "aggDesc": "기온은 기간 평균, 누적 강수량·일조 시간은 기간 합산, 강우일수는 일강수량 0.1mm 이상인 날 수, "
+                       "열대야 일수는 일 최저기온 25.0℃ 이상인 날 수"
                        + (" / 최고·최저 기온은 기간 극값" if extreme else ""),
         },
         "layouts": [[k, v] for k, v in LAYOUTS.items()],   # 순서 유지를 위해 목록으로 전달
@@ -314,6 +330,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         "recent": yearly_table(recent_df, metric_names),
         "normal30": yearly_table(normal_yearly_df, metric_names),
         "raw": table_json(format_report(raw_df, decimals=1, int_cols=["지점번호"])),
+        "dekad": dekad,
         "diagnostics": {
             "dailyRawText": daily_raw_text[:6000],
             "dailyColumns": detected_columns(daily_raw_text, DEFAULT_DAILY_COLS) if daily_raw_text else [],
