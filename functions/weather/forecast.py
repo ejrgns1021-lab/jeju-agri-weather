@@ -222,6 +222,8 @@ def summarize_vilage(items: List[Dict[str, Any]], today: dt.date) -> List[Dict[s
         tmax = v["TMX"] if v["TMX"] is not None else (max(v["TMP"]) if v["TMP"] else None)
         am = _weather_text(v["am"]["SKY"], v["am"]["PTY"]) if v["am"]["SKY"] or v["am"]["PTY"] else None
         pm = _weather_text(v["pm"]["SKY"], v["pm"]["PTY"]) if v["pm"]["SKY"] or v["pm"]["PTY"] else None
+        if am is None and pm is None:
+            continue                      # 발표 끝자락의 몇 시간만 있는 날(날씨 없음)은 중기예보와 겹치므로 제외
         main = pm or am or "-"
         out.append({
             "date": date.isoformat(), "label": _date_label(date, today),
