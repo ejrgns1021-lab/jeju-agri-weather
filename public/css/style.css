@@ -339,7 +339,6 @@ input[type=date], input[type=password], select {
 .kind-temp .delta.trend-up { color: var(--warm); }  .kind-temp .delta.trend-down { color: var(--cool); }
 .kind-rain .delta.trend-up { color: var(--wet); }   .kind-rain .delta.trend-down { color: var(--dry); }
 .kind-sun  .delta.trend-up { color: var(--bright); } .kind-sun .delta.trend-down { color: var(--dim); }
-.kind-rain .cmp-values > .ratio:first-child, .kind-sun .cmp-values > .ratio:first-child { color: var(--ink); }
 .cmp-row.is-empty .cmp-values { opacity: .5; }
 
 .gauge { grid-area: gauge; position: relative; height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
