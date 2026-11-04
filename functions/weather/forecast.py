@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-forecast.py - 대시보드 상단 기상 예보 (v6.9)
+forecast.py - 대시보드 상단 기상 예보 (v6.9, 기상특보는 제외)
 
   단기예보 : 기상청 API허브 VilageFcstInfoService_2.0/getVilageFcst (격자 좌표, 오늘~모레/글피)
   중기예보 : MidFcstInfoService/getMidLandFcst(제주도 날씨·강수확률) + getMidTa(지점별 기온), 3~10일 뒤
-  기상특보 : WthrWrnInfoService/getPwnStatus (전국 특보 현황 중 '제주' 관련 줄만)
 
 기존 관측 자료 조회·계산 로직(kma_api / processing / pipeline)과는 완전히 별개입니다.
-세 종류는 따로 받아서, 하나가 실패해도 나머지는 표시합니다.
+두 종류는 따로 받아서, 하나가 실패해도 나머지는 표시합니다.
 """
 from __future__ import annotations
 
@@ -28,7 +27,6 @@ BASE = "https://apihub.kma.go.kr/api/typ02/openApi"
 VILAGE_URL = f"{BASE}/VilageFcstInfoService_2.0/getVilageFcst"
 MID_LAND_URL = f"{BASE}/MidFcstInfoService/getMidLandFcst"
 MID_TA_URL = f"{BASE}/MidFcstInfoService/getMidTa"
-WRN_URL = f"{BASE}/WthrWrnInfoService/getPwnStatus"
 
 CONNECT_SEC, READ_SEC, RETRY = 5, 15, 2
 
@@ -320,51 +318,16 @@ def fetch_mid(api_key: str, now: dt.datetime) -> Dict[str, Any]:
     return {"base": tm.strftime("%Y-%m-%d %H:%M"), "days": days}
 
 
-# ------------------------------------------------------------------ 기상특보
-_LINE = re.compile(r"^\s*o\s*(?P<kind>[^:：]+?)\s*[:：]\s*(?P<regions>.+)$")
-
-
-def parse_warnings(text: str) -> List[Dict[str, str]]:
-    """'o 강풍주의보 : 제주도(제주도남부, 제주도산지), 전라남도(…)' 형식에서 제주 관련 부분만"""
-    out = []
-    if not text:
-        return out
-    for raw in re.split(r"[\r\n]+", text):
-        m = _LINE.match(raw)
-        if not m:
-            continue
-        kind, regions = m.group("kind").strip(), m.group("regions").strip()
-        if kind in ("없음",) or not regions or regions == "없음":
-            continue
-        parts = re.findall(r"[^,(]+(?:\([^)]*\))?", regions)
-        jeju = [p.strip(" ,") for p in parts if "제주" in p or "추자" in p]
-        if jeju:
-            out.append({"kind": kind, "regions": ", ".join(jeju)})
-    return out
-
-
-def fetch_warnings(api_key: str) -> Dict[str, Any]:
-    items = _get(WRN_URL, {"pageNo": 1, "numOfRows": 10}, api_key)["items"]
-    it = items[0] if items else {}
-    tm = str(it.get("tmFc") or "")
-    return {
-        "base": f"{tm[:4]}-{tm[4:6]}-{tm[6:8]} {tm[8:10]}:{tm[10:12]}" if len(tm) >= 12 else "",
-        "active": parse_warnings(str(it.get("t6") or "")),
-        "prelim": parse_warnings(str(it.get("t7") or "")),
-    }
-
-
 # ------------------------------------------------------------------ 묶음
 def build_forecast(api_key: str, now: Optional[dt.datetime] = None,
-                   parts: Tuple[str, ...] = ("short", "mid", "warn")) -> Dict[str, Any]:
+                   parts: Tuple[str, ...] = ("short", "mid")) -> Dict[str, Any]:
     now = now or dt.datetime.now(KST)
     out: Dict[str, Any] = {"fetchedAt": now.strftime("%Y-%m-%d %H:%M"), "errors": {}}
     jobs: Dict[str, Callable[[], Any]] = {
         "short": lambda: fetch_vilage(api_key, now),
         "mid": lambda: fetch_mid(api_key, now),
-        "warn": lambda: fetch_warnings(api_key),
     }
-    with ThreadPoolExecutor(max_workers=len(parts) or 1) as pool:      # 세 종류를 동시에 받음
+    with ThreadPoolExecutor(max_workers=len(parts) or 1) as pool:      # 단기·중기를 동시에 받음
         futures = {key: pool.submit(jobs[key]) for key in parts}
         for key, fut in futures.items():
             try:

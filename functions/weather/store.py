@@ -305,7 +305,7 @@ def result_put(key: str, result: Dict[str, Any], final: bool) -> None:
 
 
 # ---------------------------------------------------------------------
-# 5) 대시보드 상단 예보 — 단기예보는 3시간, 특보는 수시로 바뀌므로 20분만 재사용
+# 5) 대시보드 상단 예보 — 단기예보는 3시간마다 바뀌므로 20분만 재사용
 #    (일부 예보를 못 받은 경우 3분 뒤 다시 시도)
 # ---------------------------------------------------------------------
 FORECAST_COLLECTION = "forecast"
@@ -339,7 +339,7 @@ def forecast_get(key: str = "jeju") -> Optional[Dict[str, Any]]:
 
 
 def forecast_put(data: Dict[str, Any], key: str = "jeju") -> None:
-    partial = bool(set(data.get("errors") or {}) - {"warn"})   # 특보만 못 받은 경우는 정상 주기로 저장
+    partial = bool(data.get("errors"))
     ts = time.time()
     _forecast_mem[key] = (ts, FORECAST_ERR_TTL_SEC if partial else FORECAST_TTL_SEC, _copy(data))
     client = _get_client()

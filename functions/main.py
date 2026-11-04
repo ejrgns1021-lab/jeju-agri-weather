@@ -6,7 +6,7 @@ main.py - Firebase Cloud Functions (Python) 진입점
   jejuweather : 토큰 확인 → 기상청 자료 조회·가공 → 화면용 표(JSON) 반환
                (이름에 'analyze' 등을 쓰면 브라우저 광고·추적 차단 기능이 요청을 막으므로 중립적인 이름 사용)
   jejuprogress: 조회 진행 상황(단계·진행률) 확인, 60초가 넘는 조회는 완료 후 결과도 여기서 전달
-  jejuforecast: 대시보드 상단 예보(단기·중기·특보) — 20분간 저장해 재사용
+  jejuforecast: 대시보드 상단 예보(단기·중기) — 20분간 저장해 재사용
 
 두 함수 모두 '호출 가능 함수(callable)' 이며, 화면(public/js/api.js)이 호출합니다.
 비밀번호와 기상청 API 키는 Secret Manager 에 저장된 값을 사용합니다.

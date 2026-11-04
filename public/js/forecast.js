@@ -1,5 +1,5 @@
 // forecast.js (화면) — 대시보드 맨 위 기상 예보 (v6.9)
-// 한 줄 요약(오늘·내일) + 접는 칸(지역별 단기예보, 주간 중기예보) + 기상특보는 있을 때만 띠로 표시
+// 한 줄 요약(오늘·내일) + 접는 칸(지역별 단기예보, 주간 중기예보)
 // 예보는 서버(jejuforecast)가 기상청에서 받아 20분간 저장해 두고 나눠 줍니다.
 import { callFunction } from "./api.js";
 import { iconHtml } from "./icons.js";
@@ -59,17 +59,6 @@ function midTable(mid) {
     + `<tbody><tr class="fc-wxrow"><th scope="row">제주도 날씨</th>${wx}</tr>${temps}</tbody></table></div>`;
 }
 
-function renderWarnings(w) {
-  const box = $("fc-warn");
-  const active = (w && w.active) || [];
-  const prelim = (w && w.prelim) || [];
-  if (!active.length && !prelim.length) { box.hidden = true; return; }   // 특보가 없을 때는 띠를 숨김
-  const item = (x, cls) => `<li class="${cls}"><b>${esc(x.kind)}</b> ${esc(x.regions)}</li>`;
-  box.innerHTML = `${iconHtml("alert-triangle")}<div><strong>기상특보 발효 중${w.base ? ` <span class="fc-base">(${esc(w.base)} 발표)</span>` : ""}</strong>`
-    + `<ul>${active.map((x) => item(x, "on")).join("")}${prelim.map((x) => item({ ...x, kind: `예비 ${x.kind}` }, "pre")).join("")}</ul></div>`;
-  box.hidden = false;
-}
-
 function render(res) {
   const card = $("forecast");
   const short = res.short;
@@ -80,7 +69,6 @@ function render(res) {
   $("fc-mid").innerHTML = res.mid ? midTable(res.mid) : `<p class="muted small">${esc(res.errors?.mid || "중기예보 없음")}</p>`;
   const bases = [short && `단기 ${short.base} 발표`, res.mid && `중기 ${res.mid.base} 발표`].filter(Boolean).join(" · ");
   $("fc-base").textContent = bases ? `기상청 ${bases}` : "";
-  renderWarnings(res.warn);
   card.hidden = false;
 }
 

@@ -561,9 +561,4 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
 .fc-tt .hi { color: var(--warm); }
 .fc-pop { color: var(--muted); font-size: 12px; }
 .fc-src { margin: 0; font-size: 12px; }
-.fc-warn { display: flex; gap: 10px; align-items: flex-start; background: var(--err-bg); border: 1px solid var(--err-line); color: var(--err-ink); border-radius: var(--radius-sm); padding: 10px 12px; }
-.fc-warn > .ic { flex: none; margin-top: 2px; }
-.fc-warn ul { margin: 4px 0 0; padding-left: 18px; }
-.fc-warn li.pre { opacity: .8; }
-.fc-base { font-weight: 400; font-size: 12px; }
 @media (max-width: 600px) { .fc-line { font-size: 14px; } .fc-sep { display: none; } .fc-toggle { width: 100%; justify-content: center; } }

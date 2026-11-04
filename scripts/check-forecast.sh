@@ -20,5 +20,4 @@ if s:
 m=r.get("mid")
 if m:
     print("중기", m["base"])
-    for d in m["days"]: print("  ", d["label"], d["am"], "→", d["pm"], d["tmin"], "/", d["tmax"], "강수", d["pop"])
-print("특보", r.get("warn"))'
+    for d in m["days"]: print("  ", d["label"], d["am"], "→", d["pm"], d["tmin"], "/", d["tmax"], "강수", d["pop"])'

@@ -251,8 +251,6 @@ def _fake_forecast_get(url, params=None, timeout=None):
         for n in range(4, 11):
             it.update({f"taMin{n}": 12, f"taMax{n}": 18})
         return ok([it])
-    if url == fc.WRN_URL:
-        return R({"result": {"status": 403, "message": "허용되지 않은 API 입니다."}}, 403)
     raise AssertionError(url)
 
 
@@ -277,11 +275,7 @@ def test_forecast():
         assert mid[0]["date"] == "2026-11-09" and mid[0]["pop"] == 30 and mid[0]["am"] == "맑음"
         assert mid[-1]["date"] == "2026-11-15" and mid[-1]["pm"] is None and mid[-1]["pop"] == 60
         assert [p["name"] for p in mid[0]["stations"]] == ["제주", "서귀포", "성산", "고산"]
-        assert res["warn"] is None and "warn" in res["errors"] and "short" not in res["errors"]
-        txt = "o 강풍주의보 : 제주도(제주도남부, 제주도산지), 전라남도(신안군)\r\no 건조주의보 : 강원도(강릉시)\r\no 풍랑주의보 : 제주도남쪽먼바다"
-        assert fc.parse_warnings(txt) == [{"kind": "강풍주의보", "regions": "제주도(제주도남부, 제주도산지)"},
-                                          {"kind": "풍랑주의보", "regions": "제주도남쪽먼바다"}]
-        assert fc.parse_warnings("o 없음") == []
+        assert res["errors"] == {} and "warn" not in res
     finally:
         fc.requests.get = orig
 
