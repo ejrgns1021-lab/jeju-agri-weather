@@ -7,7 +7,7 @@ import { renderDekad, refreshDekadCompare } from "./dekad.js";
 import { saveWorkbook } from "./excel.js";
 
 const METRICS = ["평균 기온", "최고 기온", "최저 기온", "누적 강수량", "일조 시간", "강우일수", "열대야 일수"];
-const STATIONS = { 제주: 184, 고산: 185, 성산: 188, 서귀포: 189 };
+const STATIONS = { 제주: 184, 서귀포: 189, 성산: 188, 고산: 185 }; // 표시 순서: 제주 → 서귀포 → 성산 → 고산
 const NORMAL_MODES = [
   ["api", "평년값 API", "권장 · 빠름"],
   ["compute", "과거 30년 실측 계산", "느림 · 첫 조회 1~3분"],

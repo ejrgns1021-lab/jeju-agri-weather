@@ -300,7 +300,10 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         return table_json(format_report(out, decimals=1, int_cols=["연도"]))
 
     raw_cols = ["date", "stn_id", "stn_name"] + [METRICS[n]["col"] for n in metric_names]
-    raw_df = current_df[[c for c in raw_cols if c in current_df.columns]].rename(
+    # 원자료 표도 일자별로 지점 표시 순서(제주 → 서귀포 → 성산 → 고산)에 맞춤 (값은 그대로, 행 순서만 정렬)
+    stn_order = {sid: i for i, sid in enumerate(STATIONS.values())}
+    current_df_sorted = current_df.assign(_ord=current_df["stn_id"].map(stn_order)).sort_values(["date", "_ord"])
+    raw_df = current_df_sorted[[c for c in raw_cols if c in current_df_sorted.columns]].rename(
         columns={"date": "일자", "stn_id": "지점번호", "stn_name": "지점",
                  **{METRICS[n]["col"]: _metric_label(n) for n in metric_names}})
 

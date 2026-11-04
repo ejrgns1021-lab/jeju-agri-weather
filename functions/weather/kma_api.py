@@ -8,7 +8,7 @@ kma_api.py  (백엔드)
                              - 평년값(1991~2020): sfc_norm1.php
   2) 공공데이터포털          - ASOS 일자료 조회서비스 getWthrDataList (JSON)
 
-관측 지점 : 제주(184) · 고산(185) · 성산(188) · 서귀포(189)
+관측 지점 : 제주(184) · 서귀포(189) · 성산(188) · 고산(185)
 """
 from __future__ import annotations
 
@@ -31,7 +31,8 @@ cache_data = fsc.memo_cache  # 같은 서버 인스턴스 안에서의 단기 �
 # ---------------------------------------------------------------------
 # 상수 정의
 # ---------------------------------------------------------------------
-STATIONS: Dict[str, int] = {"제주": 184, "고산": 185, "성산": 188, "서귀포": 189}
+# 표시 순서: 제주 → 서귀포 → 성산 → 고산 (v6.8.2, 지점별 표·일별 표·선택 목록 모두 이 순서를 따름)
+STATIONS: Dict[str, int] = {"제주": 184, "서귀포": 189, "성산": 188, "고산": 185}
 STATION_NAMES: Dict[int, str] = {v: k for k, v in STATIONS.items()}
 
 APIHUB_DAILY_URL = "https://apihub.kma.go.kr/api/typ01/url/kma_sfcdd3.php"
