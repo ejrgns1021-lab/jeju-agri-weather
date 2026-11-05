@@ -32,11 +32,12 @@
     <details class="changelog">
       <summary>
         <span class="cl-title"><i data-icon="history"></i> 업데이트 내역</span>
-        <span class="cl-now">현재 v7.0</span>
+        <span class="cl-now">현재 v7.0.2</span>
         <i data-icon="chevron-down" class="cl-chev"></i>
       </summary>
       <ol class="cl-list">
-        <li class="cl-new"><b>v7.0</b><span><strong>AI 기상분석</strong>: 조회한 기간을 지점별(제주·서귀포·성산·고산)로 최근 5년과 비교해 가뭄·고온·열대야 등 특이 기상 요인을 발생 기간 중심으로 AI가 정리하고 종합 (버튼을 누를 때만)</span></li>
+        <li class="cl-new"><b>v7.0.2</b><span>평균 표기를 선택한 관측 지점에 맞춤 (예: "제주·서귀포 2개 지점 평균")</span></li>
+        <li><b>v7.0</b><span><strong>AI 기상분석</strong>: 조회한 기간을 지점별(제주·서귀포·성산·고산)로 최근 5년과 비교해 가뭄·고온·열대야 등 특이 기상 요인을 발생 기간 중심으로 AI가 정리하고 종합 (버튼을 누를 때만)</span></li>
         <li><b>v6.9.2</b><span>사이트 이름을 <strong>제주 기상계산기</strong>로 변경</span></li>
         <li><b>v6.9.1</b><span>기상청 연결이 끊길 때 예보 재시도, 마지막 예보로 대신 표시</span></li>
         <li><b>v6.9</b><span>대시보드 맨 위 <strong>기상 예보</strong>: 오늘·내일 한 줄 요약, 지역별 단기예보·주간 중기예보 접는 칸, 맑음은 빨간 해·비는 파란 우산 아이콘</span></li>
@@ -185,12 +186,12 @@
           </ol>
           <button id="welcome-start" type="button" class="btn primary wide only-mobile"><i data-icon="sliders"></i>조회 조건 설정</button>
           <dl class="legend">
-            <div><dt>해당 연도 / 전년</dt><dd>선택 기간 및 직전 해 동일 기간의 제주 전체(4개 지점 평균) 값</dd></div>
+            <div><dt>해당 연도 / 전년</dt><dd>선택 기간 및 직전 해 동일 기간의 선택한 관측 지점 평균 값 (4개 지점 모두 선택 시 제주 전체)</dd></div>
             <div><dt>최근 5년 평균</dt><dd>직전 5개년 동일 기간 값의 평균</dd></div>
             <div><dt>평년 평균</dt><dd>1991~2020년 평년값 기준 동일 기간 값</dd></div>
             <div><dt>편차 / 비율</dt><dd>해당 연도 − 기준값 / 해당 연도 ÷ 기준값 × 100(%)</dd></div>
-            <div><dt>강우일수</dt><dd>일강수량 0.1mm 이상인 날 수 (제주 전체는 4개 지점 평균)</dd></div>
-            <div><dt>열대야 일수</dt><dd>일 최저기온 25.0℃ 이상인 날 수 (제주 전체는 4개 지점 평균)</dd></div>
+            <div><dt>강우일수</dt><dd>일강수량 0.1mm 이상인 날 수 (여러 지점 선택 시 지점 평균)</dd></div>
+            <div><dt>열대야 일수</dt><dd>일 최저기온 25.0℃ 이상인 날 수 (여러 지점 선택 시 지점 평균)</dd></div>
             <div><dt>순별 집계</dt><dd>조회 후 '순별 데이터 집계 보기'를 켜면 상·중·하순별 비교표와 엑셀 저장</dd></div>
           </dl>
         </section>
@@ -204,7 +205,7 @@
           <section class="block">
             <div class="block-head">
               <h3><i data-icon="leaf"></i> 핵심 기상 지표</h3>
-              <p class="muted small">제주 전체(4개 지점 평균) · 기준값과의 차이</p>
+              <p id="metric-scope" class="muted small">제주 전체(4개 지점 평균) · 기준값과의 차이</p>
             </div>
             <div id="metric-cards" class="metric-grid"></div>
           </section>

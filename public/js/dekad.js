@@ -68,7 +68,7 @@ export function renderDekad(res, ui) {
     try {
       const info = [
         `조회 기간: ${ui.fmtDate(p.start)} ~ ${ui.fmtDate(p.end)}`,
-        `관측 지점: ${(p.stations || []).join(", ")} (제주 전체 = 지점 평균)`,
+        `관측 지점: ${(p.stations || []).join(", ")} (값 = 선택 지점 평균)`,
         `평년 기준: ${res.summary && res.summary.normalNote ? res.summary.normalNote : "-"}`,
         dk.note || "",
       ];
