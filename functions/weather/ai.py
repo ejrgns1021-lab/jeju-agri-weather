@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 MODEL = "gemini-3.8-flash"          # Vertex AI 안정 버전 (2026-09 출시)
 LOCATION = "global"
-PROMPT_VERSION = 3                  # v3: 지점별로 분석한 뒤 종합 (제주 전체 평균의 착시 방지)
+PROMPT_VERSION = 4                  # v4: v3(지점별 후 종합) + 답변 잘림 수정 — 잘린 v3 저장분은 쓰지 않음
 
 DRY_SPELL_DAYS = 7                  # 연속 무강수 기준(일)
 HEAT_DAY_C = 33.0                   # 폭염일: 일 최고기온
@@ -289,11 +289,22 @@ def generate(digest: str) -> str:
     try:
         client = genai.Client(enterprise=True, project=_project_id(), location=LOCATION,
                               http_options=types.HttpOptions(timeout=90_000))     # 90초 안에 답이 없으면 실패 처리
-        resp = client.models.generate_content(
-            model=MODEL,
-            contents=f"다음 분석 자료로 기상 분석 보고를 작성해 주세요.\n\n{digest}",
-            config=types.GenerateContentConfig(system_instruction=SYSTEM, temperature=0.2, max_output_tokens=2048),
-        )
+        contents = f"다음 분석 자료로 기상 분석 보고를 작성해 주세요.\n\n{digest}"
+
+        def ask(max_tokens: int, thinking: bool = True) -> Any:
+            cfg: Dict[str, Any] = {"system_instruction": SYSTEM, "temperature": 0.2, "max_output_tokens": max_tokens}
+            if thinking:   # 내부 추론을 짧게 → 답변에 쓸 분량 확보 (지원하지 않는 모델이면 빼고 다시 요청)
+                cfg["thinking_config"] = types.ThinkingConfig(thinking_level="LOW")
+            try:
+                return client.models.generate_content(model=MODEL, contents=contents, config=types.GenerateContentConfig(**cfg))
+            except Exception as e:
+                if thinking and "thinking" in str(e).lower():
+                    return ask(max_tokens, thinking=False)
+                raise
+
+        resp = ask(8192)
+        if _cut_off(resp):              # 최대 길이에 걸려 잘렸으면 한도를 더 늘려 한 번 더
+            resp = ask(16384)
     except Exception as exc:
         msg = str(exc)
         if "PERMISSION_DENIED" in msg or "403" in msg:
@@ -306,4 +317,15 @@ def generate(digest: str) -> str:
     text = (getattr(resp, "text", None) or "").strip()
     if not text:
         raise AiError("AI가 분석 내용을 만들지 못했습니다. 다시 시도해 주세요.")
+    if _cut_off(resp):
+        raise AiError("AI 분석이 끝까지 작성되지 않았습니다. '다시 분석'을 눌러 주세요.")
     return text
+
+
+def _cut_off(resp: Any) -> bool:
+    """답변이 최대 길이에 걸려 중간에 끊겼는지"""
+    try:
+        reason = resp.candidates[0].finish_reason
+    except (AttributeError, IndexError, TypeError):
+        return False
+    return "MAX_TOKENS" in str(reason)

@@ -295,6 +295,11 @@ def test_ai_digest():
     assert ai.valid_result(res, req) and not ai.valid_result({"params": {"start": "2024-01-01"}}, req) and not ai.valid_result(None, req)
     no_sb = dict(res, stationBrief=None)
     assert not ai.valid_result(no_sb, req)
+    class _C:  # 잘림 판정
+        def __init__(self, r): self.finish_reason = r
+    class _R:
+        def __init__(self, r): self.candidates = [_C(r)]
+    assert ai._cut_off(_R("FinishReason.MAX_TOKENS")) and not ai._cut_off(_R("STOP")) and not ai._cut_off(object())
     # 지점별 5년 평균은 그 지점 자료로 계산 (지점마다 값이 다름)
     p5 = [st["period"]["누적 강수량"][1] for st in res["stationBrief"]["stations"]]
     assert len(set(p5)) > 1, p5
