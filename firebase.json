@@ -56,9 +56,9 @@
         }
       },
       {
-        "source": "/api/jejuai",
+        "source": "/api/jejubrief",
         "function": {
-          "functionId": "jejuai",
+          "functionId": "jejubrief",
           "region": "asia-northeast3"
         }
       }

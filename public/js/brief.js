@@ -1,5 +1,6 @@
-// ai.js (화면) — [AI 기상분석] 버튼 (v7.0)
-// 버튼을 누를 때만 서버(jejuai)를 호출합니다. 서버는 방금 조회한 결과를 간추려 제미나이(Vertex AI)에게 해설을 받습니다.
+// brief.js (화면) — [AI 기상분석] 버튼 (v7.0)
+// 파일·함수 이름에 ai/analyze 등을 쓰면 브라우저 광고·추적 차단 기능(특히 엣지)이 막으므로 중립적인 이름 사용
+// 버튼을 누를 때만 서버(jejubrief)를 호출합니다. 서버는 방금 조회한 결과를 간추려 제미나이(Vertex AI)에게 해설을 받습니다.
 // 같은 조회 조건으로 이미 분석한 내용은 저장돼 있어 바로 다시 보여 줍니다.
 import { callFunction, ApiError } from "./api.js";
 import { copyText } from "./tables.js";
@@ -47,7 +48,7 @@ async function run(getToken, getParams, refresh = false) {
   $("ai-meta").textContent = "";
   card.scrollIntoView({ behavior: "smooth", block: "start" });
   try {
-    const res = await callFunction("jejuai", { token: getToken(), query: params, refresh });
+    const res = await callFunction("jejubrief", { token: getToken(), query: params, refresh });
     current = { params, text: res.text };
     $("ai-body").innerHTML = mdToHtml(res.text);
     $("ai-meta").textContent = `${res.period} · ${res.cached ? "저장된 분석" : "새 분석"} ${res.createdAt} · ${res.model} (Vertex AI)`

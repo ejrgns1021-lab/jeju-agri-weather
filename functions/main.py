@@ -7,7 +7,7 @@ main.py - Firebase Cloud Functions (Python) 진입점
                (이름에 'analyze' 등을 쓰면 브라우저 광고·추적 차단 기능이 요청을 막으므로 중립적인 이름 사용)
   jejuprogress: 조회 진행 상황(단계·진행률) 확인, 60초가 넘는 조회는 완료 후 결과도 여기서 전달
   jejuforecast: 대시보드 상단 예보(단기·중기) — 20분간 저장해 재사용
-  jejuai     : [AI 기상분석] 버튼을 누를 때만 — 조회 결과를 간추려 제미나이(Vertex AI)가 농업 관점 해설 작성
+  jejubrief  : [AI 기상분석] 버튼을 누를 때만 — 조회 결과를 간추려 제미나이(Vertex AI)가 농업 관점 해설 작성
 
 두 함수 모두 '호출 가능 함수(callable)' 이며, 화면(public/js/api.js)이 호출합니다.
 비밀번호와 기상청 API 키는 Secret Manager 에 저장된 값을 사용합니다.
@@ -172,7 +172,7 @@ def jejuforecast(req: https_fn.CallableRequest) -> Dict[str, Any]:
 
 @https_fn.on_call(secrets=[APP_PASSWORD, KMA_API_KEY], invoker="public", memory=options.MemoryOption.GB_1, cpu=1,
                   timeout_sec=300, concurrency=4)
-def jejuai(req: https_fn.CallableRequest) -> Dict[str, Any]:
+def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
     """조회한 기간의 기상을 AI가 분석 (버튼을 누를 때만 호출, 같은 조건은 저장된 분석 재사용)"""
     data = req.data or {}
     if not auth.verify_token(str(data.get("token", "")), APP_PASSWORD.value or ""):

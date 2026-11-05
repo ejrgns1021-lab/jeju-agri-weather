@@ -5,8 +5,6 @@ import { buildTable, copyForHwp, copyText, downloadCsv, toTsv } from "./tables.j
 import { icon, hydrateIcons } from "./icons.js";
 import { renderDekad, refreshDekadCompare } from "./dekad.js";
 import { saveWorkbook } from "./excel.js";
-import { loadForecast, setupForecast } from "./forecast.js";
-import { resetAi, setupAi } from "./ai.js";
 
 const METRICS = ["평균 기온", "최고 기온", "최저 기온", "누적 강수량", "일조 시간", "강우일수", "열대야 일수"];
 const STATIONS = { 제주: 184, 서귀포: 189, 성산: 188, 고산: 185 }; // 표시 순서: 제주 → 서귀포 → 성산 → 고산
@@ -33,6 +31,9 @@ const PREFS_VERSION = 3; // v6.8: 열대야 일수 추가 — 이전에 저장�
 const MAX_DAYS = 366;
 
 const $ = (id) => document.getElementById(id);
+// 부가 기능(예보·AI 분석)은 따로 불러옴 — 브라우저 차단 기능이 파일 하나를 막아도 로그인·조회는 항상 동작
+const extras = { forecast: null, brief: null };
+const extra = (name, fn) => { try { const m = extras[name]; if (m) fn(m); } catch (e) { /* 부가 기능 오류는 무시 */ } };
 const DEFAULT_LAYOUT = "combined"; // 기본 표 구성: 한 칸에 편차 (비율%)
 const state = { result: null, layout: DEFAULT_LAYOUT };
 
@@ -102,7 +103,7 @@ function showLogin(message = "") {
 function showApp() {
   $("login-view").hidden = true;
   $("app-view").hidden = false;
-  loadForecast(token());   // 맨 위 기상 예보 (조회와 별개로 불러옴)
+  extra("forecast", (m) => m.loadForecast(token()));   // 맨 위 기상 예보 (조회와 별개로 불러옴)
 }
 
 async function onLogin(ev) {
@@ -126,7 +127,7 @@ async function onLogin(ev) {
 function logout() {
   storage.del(sessionStorage, TOKEN_KEY);
   state.result = null;
-  resetAi(false);
+  extra("brief", (m) => m.resetAi(false));
   $("results").hidden = true;
   $("welcome").hidden = false;
   $("notices").replaceChildren();
@@ -328,7 +329,7 @@ function renderComparison() {
 
 function renderResult(res) {
   renderNotices(res.notices || []);
-  resetAi(!!res.ok);                         // 새 조회 결과마다 AI 분석은 버튼을 다시 눌러야 함
+  extra("brief", (m) => m.resetAi(!!res.ok));   // 새 조회 결과마다 AI 분석은 버튼을 다시 눌러야 함
   if (!res.ok) {
     $("results").hidden = true;
     $("welcome").hidden = false;
@@ -544,10 +545,22 @@ function init() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
   matchMedia(MOBILE).addEventListener("change", (e) => { if (!e.matches) closeSettings(); });
   setupTabs();
-  setupForecast();
-  setupAi(token, () => (state.result && state.result.ok ? state.result.params : null));
   buildSettings();
   if (token()) showApp(); else showLogin();
+  loadExtras();
+}
+
+function loadExtras() {
+  import("./forecast.js").then((m) => {
+    extras.forecast = m;
+    m.setupForecast();
+    if (!$("app-view").hidden) m.loadForecast(token());
+  }).catch(() => { /* 예보 파일을 못 불러와도 나머지는 정상 */ });
+  import("./brief.js").then((m) => {
+    extras.brief = m;
+    m.setupAi(token, () => (state.result && state.result.ok ? state.result.params : null));
+    if (state.result && state.result.ok) m.resetAi(true);
+  }).catch(() => { /* AI 분석 파일을 못 불러와도 나머지는 정상 */ });
 }
 
 init();
