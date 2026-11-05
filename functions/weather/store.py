@@ -302,3 +302,51 @@ def result_put(key: str, result: Dict[str, Any], final: bool) -> None:
         })
     except Exception as exc:
         log.warning("결과 저장 실패: %s", exc)
+
+
+# ---------------------------------------------------------------------
+# 5) 대시보드 상단 예보 — 단기예보는 3시간마다 바뀌므로 20분만 재사용
+#    (일부 예보를 못 받은 경우 3분 뒤 다시 시도)
+# ---------------------------------------------------------------------
+FORECAST_COLLECTION = "forecast"
+FORECAST_TTL_SEC = 20 * 60
+FORECAST_ERR_TTL_SEC = 3 * 60
+_forecast_mem: Dict[str, Any] = {}
+
+
+def forecast_get(key: str = "jeju") -> Optional[Dict[str, Any]]:
+    now = time.time()
+    m = _forecast_mem.get(key)
+    if m and now - m[0] < m[1]:
+        return _copy(m[2])
+    client = _get_client()
+    if client is None:
+        return None
+    try:
+        snap = client.collection(FORECAST_COLLECTION).document(key).get()
+        if not snap.exists:
+            return None
+        p = snap.to_dict() or {}
+        ttl = FORECAST_ERR_TTL_SEC if p.get("partial") else FORECAST_TTL_SEC
+        if now - float(p.get("ts") or 0) >= ttl:
+            return None
+        data = json.loads(p["data"])
+        _forecast_mem[key] = (float(p["ts"]), ttl, data)
+        return _copy(data)
+    except Exception as exc:
+        log.warning("예보 저장분 읽기 실패: %s", exc)
+        return None
+
+
+def forecast_put(data: Dict[str, Any], key: str = "jeju") -> None:
+    partial = bool(data.get("errors"))
+    ts = time.time()
+    _forecast_mem[key] = (ts, FORECAST_ERR_TTL_SEC if partial else FORECAST_TTL_SEC, _copy(data))
+    client = _get_client()
+    if client is None:
+        return
+    try:
+        client.collection(FORECAST_COLLECTION).document(key).set({
+            "data": json.dumps(data, ensure_ascii=False, default=str), "ts": ts, "partial": partial})
+    except Exception as exc:
+        log.warning("예보 저장 실패: %s", exc)

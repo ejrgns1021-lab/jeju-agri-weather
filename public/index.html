@@ -14,6 +14,7 @@
 <body>
   <!-- ============================ 로그인 ============================ -->
   <section id="login-view" class="login-view" hidden>
+    <div class="login-wrap">
     <form id="login-form" class="login-card" autocomplete="off">
       <div class="login-badge"><i data-icon="sprout"></i></div>
       <h1>제주 농업 기상 분석</h1>
@@ -26,6 +27,30 @@
       <button id="login-btn" type="submit" class="btn primary wide lg">로그인</button>
       <p class="login-foot">기상청 ASOS · 제주 · 서귀포 · 성산 · 고산</p>
     </form>
+
+    <!-- 업데이트 내역 (접는 칸) — 새 버전을 낼 때 맨 위에 한 줄 추가 -->
+    <details class="changelog">
+      <summary>
+        <span class="cl-title"><i data-icon="history"></i> 업데이트 내역</span>
+        <span class="cl-now">현재 v6.9</span>
+        <i data-icon="chevron-down" class="cl-chev"></i>
+      </summary>
+      <ol class="cl-list">
+        <li class="cl-new"><b>v6.9</b><span>대시보드 맨 위 <strong>기상 예보</strong>: 오늘·내일 한 줄 요약, 지역별 단기예보·주간 중기예보 접는 칸, 맑음은 빨간 해·비는 파란 우산 아이콘</span></li>
+        <li><b>v6.8.2</b><span>지점 순서를 제주 → 서귀포 → 성산 → 고산으로 통일</span></li>
+        <li><b>v6.8.1</b><span>누적 강수량·일조 시간 카드도 편차를 위에, 비율(%)을 아래에 표시해 양식 통일</span></li>
+        <li><b>v6.8</b><span><strong>열대야 일수</strong> 지표, <strong>순별(상·중·하순) 집계</strong>와 엑셀 저장, 전체 결과 엑셀 저장</span></li>
+        <li><b>v6.7</b><span><strong>강우일수</strong> 지표, 카드에 "전년 대비 / 최근 5년 대비 / 평년 대비" 표기</span></li>
+        <li><b>v6.6</b><span>조회 결과 저장으로 같은 조건 재조회 즉시 표시, 기상청 연결 재시도 개선</span></li>
+        <li><b>v6.5</b><span>조회 중 진행 단계·진행률 표시, 오래 걸리는 조회도 끝까지 결과 수신</span></li>
+        <li><b>v6.3~6.4</b><span>일부 브라우저·기관망에서 로그인·조회가 안 되던 문제 해결</span></li>
+        <li><b>v6.2</b><span>화면 전면 개편: 지표별 비교 카드, 모바일 최적화, 아이콘</span></li>
+        <li><b>v6.1</b><span>비교표 기본 구성을 "한 칸에 편차 (비율%)"로 변경</span></li>
+        <li><b>v6</b><span>Streamlit → Firebase로 전환, 화면·서버 분리, 풍속 지표 제거, 확정 자료 저장</span></li>
+        <li><b>v5</b><span>전년 대비 열, 3종 비율(%) 열, 표 열 구성 즉시 전환</span></li>
+      </ol>
+    </details>
+    </div>
   </section>
 
   <!-- ============================ 메인 ============================ -->
@@ -106,6 +131,20 @@
 
       <!-- 결과 -->
       <main class="content">
+        <!-- 기상 예보 (v6.9): 한 줄 요약 + 접는 칸 -->
+        <section id="forecast" class="card forecast" hidden aria-label="기상 예보">
+          <div class="fc-head">
+            <div id="fc-line" class="fc-line"></div>
+            <button id="fc-toggle" type="button" class="btn ghost small fc-toggle" aria-expanded="false" aria-controls="fc-body">지역별·주간 예보<i data-icon="chevron-down"></i></button>
+          </div>
+          <div id="fc-body" class="fc-body" hidden>
+            <h4 class="fc-h">단기예보 <span class="muted small">지점별 · 오전→오후 날씨, 최저/최고 기온, 강수확률(오전·오후)</span></h4>
+            <div id="fc-short"></div>
+            <h4 class="fc-h">중기예보 <span class="muted small">제주도 날씨 · 지점별 최저/최고 기온</span></h4>
+            <div id="fc-mid"></div>
+          </div>
+          <p id="fc-base" class="muted small fc-src"></p>
+        </section>
         <div class="period-hero">
           <span class="eyebrow"><i data-icon="calendar" class="ic-sm"></i> 분석 기간</span>
           <h2 id="period-title" class="period-title"></h2>

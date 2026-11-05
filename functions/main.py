@@ -6,6 +6,7 @@ main.py - Firebase Cloud Functions (Python) 진입점
   jejuweather : 토큰 확인 → 기상청 자료 조회·가공 → 화면용 표(JSON) 반환
                (이름에 'analyze' 등을 쓰면 브라우저 광고·추적 차단 기능이 요청을 막으므로 중립적인 이름 사용)
   jejuprogress: 조회 진행 상황(단계·진행률) 확인, 60초가 넘는 조회는 완료 후 결과도 여기서 전달
+  jejuforecast: 대시보드 상단 예보(단기·중기) — 20분간 저장해 재사용
 
 두 함수 모두 '호출 가능 함수(callable)' 이며, 화면(public/js/api.js)이 호출합니다.
 비밀번호와 기상청 API 키는 Secret Manager 에 저장된 값을 사용합니다.
@@ -25,6 +26,7 @@ from firebase_functions.params import SecretParam
 
 from weather import auth
 from weather import store
+from weather import forecast as fc
 from weather.kma_api import WeatherApiError, WeatherApiTimeoutError
 from weather.pipeline import InputError, run_analysis, validate_request
 
@@ -136,3 +138,24 @@ def jejuprogress(req: https_fn.CallableRequest) -> Dict[str, Any]:
     if job.get("status") == "done" and job.get("result") and data.get("withResult"):
         out["result"] = json.loads(job["result"])
     return out
+
+
+@https_fn.on_call(secrets=[APP_PASSWORD, KMA_API_KEY], invoker="public", memory=options.MemoryOption.MB_512, cpu=1,
+                  timeout_sec=60, concurrency=10)
+def jejuforecast(req: https_fn.CallableRequest) -> Dict[str, Any]:
+    """대시보드 맨 위 예보 줄 + 지역별 접는 칸. 관측 자료 조회와는 별개로 동작"""
+    data = req.data or {}
+    if not auth.verify_token(str(data.get("token", "")), APP_PASSWORD.value or ""):
+        raise _fail(https_fn.FunctionsErrorCode.UNAUTHENTICATED, "로그인이 만료되었습니다. 다시 로그인해 주세요.")
+    api_key = (KMA_API_KEY.value or "").strip()
+    saved = None if data.get("refresh") else store.forecast_get()
+    if saved:
+        return saved
+    try:
+        result = fc.build_forecast(api_key)
+    except Exception as exc:
+        log.error("예보 오류: %s", _redact(repr(exc), api_key))
+        raise _fail(https_fn.FunctionsErrorCode.INTERNAL, "예보를 불러오지 못했습니다.")
+    result["errors"] = {k: _redact(v, api_key) for k, v in result.get("errors", {}).items()}
+    store.forecast_put(result)
+    return result

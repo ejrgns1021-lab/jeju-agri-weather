@@ -135,6 +135,29 @@ p { margin: 0; }
 .login-badge .ic { width: 34px; height: 34px; }
 .login-card h1 { font-size: 23px; }
 .login-foot { font-size: 12px; color: var(--muted); margin-top: 4px; }
+/* 로그인 화면 업데이트 내역 (v6.9) — PC: 로그인 오른쪽, 모바일: 아래 */
+.login-wrap { display: grid; gap: 18px; width: min(400px, 100%); justify-items: stretch; align-items: start; }
+.login-wrap .login-card { width: 100%; }
+@media (min-width: 900px) {
+  .login-wrap { grid-template-columns: 400px 380px; width: auto; }
+}
+.changelog { background: var(--surface); border-radius: 18px; box-shadow: var(--shadow); padding: 0; overflow: hidden; }
+.changelog summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 16px 18px; font-weight: 700;
+}
+.changelog summary::-webkit-details-marker { display: none; }
+.cl-title { display: inline-flex; align-items: center; gap: 8px; }
+.cl-title .ic { color: var(--brand); }
+.cl-now { margin-left: auto; font-size: 12px; color: var(--brand); background: var(--brand-soft); padding: 2px 9px; border-radius: 999px; }
+.cl-chev { transition: transform .2s; color: var(--muted); }
+.changelog[open] .cl-chev { transform: rotate(180deg); }
+.changelog[open] summary { border-bottom: 1px solid var(--line); }
+.cl-list { list-style: none; margin: 0; padding: 6px 18px 14px; display: grid; gap: 0; max-height: 60vh; overflow-y: auto; }
+.cl-list li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--line); font-size: 13.5px; line-height: 1.5; }
+.cl-list li:last-child { border-bottom: 0; }
+.cl-list b { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cl-list .cl-new b { color: var(--brand); }
+.cl-list strong { color: var(--ink); }
 .form-error { color: var(--err-ink); min-height: 1.2em; font-size: 14px; }
 
 /* ---------------------------------------------------------------- 상단바 */
@@ -531,3 +554,48 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
   .switch.big { width: 100%; }
   .excel-all { justify-self: stretch; }
 }
+
+/* ---------------------------------------------------------------- 기상 예보 (v6.9) */
+.forecast { padding: 14px 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.forecast > *, .fc-body > * { min-width: 0; }
+.fc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fc-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: 15px; min-width: 0; }
+.fc-day { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fc-day b { color: var(--brand); }
+.fc-next { color: var(--ink-2); }
+.fc-temp { font-variant-numeric: tabular-nums; font-weight: 600; }
+.fc-sep { color: var(--line-strong); }
+.fc-ic { width: 30px; height: 30px; flex: none; stroke-width: 2.25; }
+.fc-ic-lg { width: 28px; height: 28px; }
+/* 날씨 아이콘 색 — 한눈에 구분되도록 진하게 */
+.wx-sun { color: #e03131; fill: none; }
+.wx-sun circle { fill: #ffe3e3; }
+.wx-partly { color: #e8590c; }
+.wx-cloud { color: #6b7785; }
+.wx-rain { color: #1971c2; }
+.wx-rain path:first-child { fill: #d0ebff; }
+.wx-snow { color: #22b8cf; }
+@media (prefers-color-scheme: dark) {
+  .wx-sun { color: #ff6b6b; } .wx-sun circle { fill: #5c1f1f; }
+  .wx-partly { color: #ff922b; } .wx-cloud { color: #adb5bd; }
+  .wx-rain { color: #4dabf7; } .wx-rain path:first-child { fill: #173a5c; } .wx-snow { color: #66d9e8; }
+}
+.fc-toggle { flex: none; }
+.fc-toggle .ic { transition: transform .2s; }
+.fc-toggle.open .ic { transform: rotate(180deg); }
+.fc-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.fc-h { margin: 6px 0 0; font-size: 14px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.fc-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.fc-table { border-collapse: collapse; width: 100%; font-size: 13px; text-align: center; }
+.fc-table th, .fc-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+.fc-table thead th { background: var(--surface-2); font-weight: 700; color: var(--ink-2); }
+.fc-table tbody th { background: var(--surface-2); text-align: left; position: sticky; left: 0; z-index: 1; }
+.fc-table tr:last-child th, .fc-table tr:last-child td { border-bottom: 0; }
+.fc-table td .fc-ic { display: block; margin: 0 auto 4px; width: 34px; height: 34px; }
+.fc-wx { font-weight: 600; }
+.fc-tt { font-variant-numeric: tabular-nums; }
+.fc-tt .lo { color: var(--cool); }
+.fc-tt .hi { color: var(--warm); }
+.fc-pop { color: var(--muted); font-size: 12px; }
+.fc-src { margin: 0; font-size: 12px; }
+@media (max-width: 600px) { .fc-line { font-size: 14px; } .fc-sep { display: none; } .fc-toggle { width: 100%; justify-content: center; } }

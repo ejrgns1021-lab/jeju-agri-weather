@@ -5,6 +5,7 @@ import { buildTable, copyForHwp, copyText, downloadCsv, toTsv } from "./tables.j
 import { icon, hydrateIcons } from "./icons.js";
 import { renderDekad, refreshDekadCompare } from "./dekad.js";
 import { saveWorkbook } from "./excel.js";
+import { loadForecast, setupForecast } from "./forecast.js";
 
 const METRICS = ["평균 기온", "최고 기온", "최저 기온", "누적 강수량", "일조 시간", "강우일수", "열대야 일수"];
 const STATIONS = { 제주: 184, 서귀포: 189, 성산: 188, 고산: 185 }; // 표시 순서: 제주 → 서귀포 → 성산 → 고산
@@ -100,6 +101,7 @@ function showLogin(message = "") {
 function showApp() {
   $("login-view").hidden = true;
   $("app-view").hidden = false;
+  loadForecast(token());   // 맨 위 기상 예보 (조회와 별개로 불러옴)
 }
 
 async function onLogin(ev) {
@@ -539,6 +541,7 @@ function init() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
   matchMedia(MOBILE).addEventListener("change", (e) => { if (!e.matches) closeSettings(); });
   setupTabs();
+  setupForecast();
   buildSettings();
   if (token()) showApp(); else showLogin();
 }
