@@ -157,5 +157,12 @@ def jejuforecast(req: https_fn.CallableRequest) -> Dict[str, Any]:
         log.error("예보 오류: %s", _redact(repr(exc), api_key))
         raise _fail(https_fn.FunctionsErrorCode.INTERNAL, "예보를 불러오지 못했습니다.")
     result["errors"] = {k: _redact(v, api_key) for k, v in result.get("errors", {}).items()}
+    if result["errors"]:
+        log.warning("예보 일부 실패: %s", result["errors"])
+        last = store.forecast_last_good()
+        for part in list(result["errors"]):
+            if last and last.get(part):           # 못 받은 부분은 마지막 정상 예보로 대신 (화면에 받은 시각 표시)
+                result[part] = last[part]
+                result.setdefault("stale", {})[part] = last.get("fetchedAt", "")
     store.forecast_put(result)
     return result

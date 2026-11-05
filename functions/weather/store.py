@@ -338,6 +338,19 @@ def forecast_get(key: str = "jeju") -> Optional[Dict[str, Any]]:
         return None
 
 
+def forecast_last_good(key: str = "jeju") -> Optional[Dict[str, Any]]:
+    """기상청 연결이 안 될 때 대신 보여줄, 마지막으로 정상 수신한 예보 (기간 제한 없음)"""
+    client = _get_client()
+    if client is None:
+        return None
+    try:
+        snap = client.collection(FORECAST_COLLECTION).document(key + "_last").get()
+        return json.loads((snap.to_dict() or {})["data"]) if snap.exists else None
+    except Exception as exc:
+        log.warning("지난 예보 읽기 실패: %s", exc)
+        return None
+
+
 def forecast_put(data: Dict[str, Any], key: str = "jeju") -> None:
     partial = bool(data.get("errors"))
     ts = time.time()
@@ -346,7 +359,9 @@ def forecast_put(data: Dict[str, Any], key: str = "jeju") -> None:
     if client is None:
         return
     try:
-        client.collection(FORECAST_COLLECTION).document(key).set({
-            "data": json.dumps(data, ensure_ascii=False, default=str), "ts": ts, "partial": partial})
+        doc = {"data": json.dumps(data, ensure_ascii=False, default=str), "ts": ts, "partial": partial}
+        client.collection(FORECAST_COLLECTION).document(key).set(doc)
+        if not partial:
+            client.collection(FORECAST_COLLECTION).document(key + "_last").set(doc)
     except Exception as exc:
         log.warning("예보 저장 실패: %s", exc)

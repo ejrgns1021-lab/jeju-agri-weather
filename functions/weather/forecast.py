@@ -28,7 +28,7 @@ VILAGE_URL = f"{BASE}/VilageFcstInfoService_2.0/getVilageFcst"
 MID_LAND_URL = f"{BASE}/MidFcstInfoService/getMidLandFcst"
 MID_TA_URL = f"{BASE}/MidFcstInfoService/getMidTa"
 
-CONNECT_SEC, READ_SEC, RETRY = 5, 15, 2
+CONNECT_SEC, READ_SEC, RETRY = 5, 12, 3     # 기상청이 간헐적으로 연결을 받지 않아 재시도 (최악 약 30초, 지점별 동시 요청)
 
 # 지점 위·경도(기상청 ASOS) → 단기예보 격자
 STATION_LATLON: Dict[str, Tuple[float, float]] = {
@@ -53,12 +53,12 @@ def _get(url: str, params: Dict[str, Any], api_key: str) -> Dict[str, Any]:
     """기상청 typ02(JSON) 호출 → body. 활용신청 필요(403)·오류 문구를 구분해 ForecastError로"""
     p = dict(params, authKey=api_key, dataType="JSON")
     last = None
-    for _ in range(RETRY + 1):
+    for attempt in range(RETRY + 1):
         try:
             r = requests.get(url, params=p, timeout=(CONNECT_SEC, READ_SEC))
         except requests.exceptions.RequestException as exc:
             last = exc
-            time.sleep(0.7)
+            time.sleep(1.0 + attempt)                 # 1·2·3초 간격
             continue
         text = r.text or ""
         if r.status_code == 403 or "활용신청" in text:
@@ -86,7 +86,9 @@ def _get(url: str, params: Dict[str, Any], api_key: str) -> Dict[str, Any]:
         if isinstance(items, dict):
             items = [items]
         return {"items": items, "total": int(body.get("totalCount") or len(items))}
-    raise ForecastError("기상청 예보 서버에 연결할 수 없습니다.") if not isinstance(last, ForecastError) else last
+    if isinstance(last, ForecastError):
+        raise last
+    raise ForecastError(f"기상청 예보 서버에 연결할 수 없습니다. ({last.__class__.__name__ if last else '-'})")
 
 
 def latlon_to_grid(lat: float, lon: float) -> Tuple[int, int]:
@@ -239,8 +241,7 @@ def summarize_vilage(items: List[Dict[str, Any]], today: dt.date) -> List[Dict[s
 
 def fetch_vilage(api_key: str, now: dt.datetime) -> Dict[str, Any]:
     base_date, base_time = vilage_base(now)
-    stations = []
-    for name in STATIONS:
+    def one(name: str) -> Dict[str, Any]:
         nx, ny = latlon_to_grid(*STATION_LATLON[name])
         res = _get(VILAGE_URL, {"pageNo": 1, "numOfRows": 1500, "base_date": base_date,
                                 "base_time": base_time, "nx": nx, "ny": ny}, api_key)
@@ -249,7 +250,10 @@ def fetch_vilage(api_key: str, now: dt.datetime) -> Dict[str, Any]:
             res2 = _get(VILAGE_URL, {"pageNo": 2, "numOfRows": 1500, "base_date": base_date,
                                      "base_time": base_time, "nx": nx, "ny": ny}, api_key)
             items = items + res2["items"]
-        stations.append({"name": name, "grid": [nx, ny], "days": summarize_vilage(items, now.date())})
+        return {"name": name, "grid": [nx, ny], "days": summarize_vilage(items, now.date())}
+
+    with ThreadPoolExecutor(max_workers=4) as pool:          # 4개 지점 동시에
+        stations = list(pool.map(one, list(STATIONS)))
     return {"base": f"{base_date[:4]}-{base_date[4:6]}-{base_date[6:]} {base_time[:2]}:00",
             "stations": stations, "jeju": combine_days(stations)}
 
@@ -286,10 +290,12 @@ def fetch_mid(api_key: str, now: dt.datetime) -> Dict[str, Any]:
     tmfc = tm.strftime("%Y%m%d%H%M")
     land = _get(MID_LAND_URL, {"pageNo": 1, "numOfRows": 10, "regId": MID_LAND_REG, "tmFc": tmfc}, api_key)["items"]
     land = land[0] if land else {}
-    temps: Dict[str, Dict[str, Any]] = {}
-    for name in STATIONS:
+    def ta(name: str) -> Dict[str, Any]:
         rows = _get(MID_TA_URL, {"pageNo": 1, "numOfRows": 10, "regId": MID_TA_REG[name], "tmFc": tmfc}, api_key)["items"]
-        temps[name] = rows[0] if rows else {}
+        return rows[0] if rows else {}
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        temps: Dict[str, Dict[str, Any]] = dict(zip(STATIONS, pool.map(ta, list(STATIONS))))
     days = []
     for n in range(3, 11):                       # 발표일 기준 n일 뒤 (기상청은 4~10일 또는 3~10일 제공)
         date = (tm + dt.timedelta(days=n)).date()
