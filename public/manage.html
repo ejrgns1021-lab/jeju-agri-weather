@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>제주 기상계산기 · 관리</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/manage.css">
+</head>
+<body>
+  <!-- 관리자 로그인 -->
+  <section id="m-login" class="login-view">
+    <form id="m-login-form" class="login-card" autocomplete="off">
+      <div class="login-badge"><i data-icon="lock"></i></div>
+      <h1>관리자 화면</h1>
+      <p class="muted">제주 기상계산기 · 관리자 비밀번호로만 접속</p>
+      <label class="field"><span>관리자 비밀번호</span>
+        <input id="m-password" type="password" required autocomplete="current-password" placeholder="관리자 비밀번호"></label>
+      <p id="m-login-error" class="form-error" role="alert"></p>
+      <button id="m-login-btn" type="submit" class="btn primary wide lg">접속</button>
+      <p class="login-foot"><a href="./">← 기상계산기로 돌아가기</a></p>
+    </form>
+  </section>
+
+  <!-- 관리자 대시보드 -->
+  <div id="m-app" class="m-app" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark"><i data-icon="sliders"></i></span>
+        <div class="brand-text"><strong>제주 기상계산기 · 관리</strong><small>이용 현황 · 저장분 · 연결 점검</small></div></div>
+      <div class="m-top-actions">
+        <a class="btn ghost small" href="./"><i data-icon="leaf"></i><span>기상계산기</span></a>
+        <button id="m-logout" type="button" class="icon-btn" aria-label="로그아웃" title="로그아웃"><i data-icon="log-out"></i></button>
+      </div>
+    </header>
+    <main class="m-main">
+      <section class="card">
+        <div class="m-head">
+          <h3><i data-icon="bar-chart"></i> 이용 현황</h3>
+          <div class="segmented" id="m-range" role="tablist">
+            <button type="button" data-days="7">7일</button><button type="button" data-days="30" class="active">30일</button><button type="button" data-days="90">90일</button>
+          </div>
+        </div>
+        <div id="m-kpis" class="m-kpis"></div>
+        <div id="m-chart" class="m-chart" aria-label="날짜별 접속 브라우저 수"></div>
+        <div id="m-table"></div>
+        <p class="muted small">브라우저 수 = 이 사이트에 접속한 서로 다른 브라우저(PC·휴대폰별) 수. 이름·IP 등 개인정보는 기록하지 않음.
+          같은 사람이 PC와 휴대폰으로 접속하면 2로 셉니다. v7.2 배포 이후부터 기록됩니다.</p>
+      </section>
+
+      <section class="card">
+        <div class="m-head"><h3><i data-icon="check-circle"></i> 연결 점검</h3>
+          <button id="m-health" type="button" class="btn primary small"><i data-icon="refresh-cw"></i><span>지금 점검</span></button></div>
+        <div id="m-health-out" class="m-health"><p class="muted small">기상청 일자료·단기예보, 제미나이(AI)에 짧은 요청을 보내 응답을 확인합니다.</p></div>
+      </section>
+
+      <section class="card">
+        <div class="m-head"><h3><i data-icon="database"></i> 저장분 관리</h3></div>
+        <p class="muted small">저장분을 비우면 다음 조회·분석 때 새로 계산합니다(첫 조회가 느려짐). 기상청 관측 원자료·평년값 저장분은 지우지 않습니다.</p>
+        <div id="m-cache" class="m-cache"></div>
+      </section>
+
+      <section class="card">
+        <div class="m-head"><h3><i data-icon="layers"></i> 바로가기</h3></div>
+        <div class="m-links">
+          <a target="_blank" rel="noopener" href="https://console.firebase.google.com/project/jeju-agri-weather/usage">Firebase 사용량·요금</a>
+          <a target="_blank" rel="noopener" href="https://console.cloud.google.com/billing/01295E-087F36-692441/credits/all?project=jeju-agri-weather">무료 체험 크레딧 잔액</a>
+          <a target="_blank" rel="noopener" href="https://console.cloud.google.com/billing/01295E-087F36-692441/budgets?project=jeju-agri-weather">예산 알림 설정</a>
+          <a target="_blank" rel="noopener" href="https://console.cloud.google.com/logs/query?project=jeju-agri-weather">서버 기록(로그)</a>
+          <a target="_blank" rel="noopener" href="https://console.firebase.google.com/project/jeju-agri-weather/firestore">Firestore 저장 자료</a>
+          <a target="_blank" rel="noopener" href="https://console.firebase.google.com/project/jeju-agri-weather/functions">서버 함수 상태</a>
+          <a target="_blank" rel="noopener" href="https://apihub.kma.go.kr/mypage.do">기상청 API허브 (호출 횟수)</a>
+          <a target="_blank" rel="noopener" href="https://github.com/ejrgns1021-lab/jeju-agri-weather">GitHub 저장소</a>
+          <a target="_blank" rel="noopener" href="https://jeju-agri-weather--preview-test-h21yjnk4.web.app">프리뷰(테스트) 사이트</a>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="preview-banner" class="preview-banner" hidden>테스트(프리뷰) 버전입니다 · 실제 서비스와 별개로 동작합니다</div>
+  <script type="module" src="js/manage.js"></script>
+</body>
+</html>

@@ -20,6 +20,8 @@
 | `public/js/app.js` | 화면 동작: 입력 확인, 조회 요청, 결과 표·탭 표시 |
 | `public/js/api.js` | 백엔드 호출 (Firebase 호출 가능 함수 규격) |
 | `public/js/forecast.js` | 대시보드 상단 예보 줄·지역별 접는 칸 |
+| `public/manage.html`, `public/js/manage.js` | 관리자 화면 |
+| `functions/weather/usage.py` | 이용 현황 기록·집계, 저장분 비우기 |
 | `functions/weather/ai.py` | AI 기상분석: 분석 자료 만들기·사건 구간 탐지·제미나이 호출 |
 | `public/js/brief.js` | [AI 기상분석] 버튼·분석 카드·복사 |
 | `functions/weather/forecast.py` | 기상청 단기·중기예보 수집과 지점별 정리 |
@@ -106,6 +108,7 @@ firebase emulators:start --only functions,hosting
 4. 내려받은 JSON 파일은 PC에서 삭제 (깃허브에 암호화되어 저장됨)
 
 ## 변경 내역
+- **v7.2**: **관리자 화면** `/manage.html` (관리자 비밀번호 `ADMIN_PASSWORD`, 공용 비밀번호와 별개) — 날짜별 접속 브라우저 수·로그인·조회·AI 분석 횟수(브라우저별 무작위 번호만 해시해 기록, 개인정보 없음, Firestore `usage`), 연결 점검(기상청 일자료·단기예보·제미나이), 저장분 비우기, 콘솔 바로가기. 비밀번호 설정: Cloud Shell에서 `bash scripts/set-admin-password.sh`
 - **v7.1**: AI 기상분석 기준 — 기온·일조·열대야는 최근 5년과만(온난화 반영), 강수량은 지점별 최근 5년·평년을 함께 보고 두 기준 모두의 50% 미만이면 부족, 모두의 200% 초과면 과다, 그 밖은 적정(문제로 쓰지 않음)
 - **v7.0.2**: 대시보드 "핵심 기상 지표" 제목을 "핵심 기상 지표(평균)"으로 바꾸고 아래 설명 줄 삭제
 - **v7.0.1**: AI 기상분석 답변이 중간에 잘리던 문제 수정

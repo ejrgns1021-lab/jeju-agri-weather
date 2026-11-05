@@ -38,7 +38,23 @@ export class ApiError extends Error {
 
 const CONNECT_MSG = "서버에 연결할 수 없습니다. 인터넷 연결을 확인하고, 브라우저의 광고·추적 차단 기능이 켜져 있다면 이 사이트에서 꺼 주세요.";
 
+// 이용 현황 집계용 브라우저 번호 (무작위, 개인정보 없음 — 이 브라우저에만 저장)
+function clientId() {
+  const KEY = "jeju-weather-cid";
+  try {
+    let v = localStorage.getItem(KEY);
+    if (!v) {
+      const a = new Uint8Array(12);
+      crypto.getRandomValues(a);
+      v = Array.from(a, (x) => x.toString(16).padStart(2, "0")).join("");
+      localStorage.setItem(KEY, v);
+    }
+    return v;
+  } catch (e) { return ""; }
+}
+
 async function post(url, data) {
+  data = { ...data, cid: clientId() };
   let resp;
   try {
     resp = await fetch(url, {

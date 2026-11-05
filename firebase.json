@@ -61,6 +61,20 @@
           "functionId": "jejubrief",
           "region": "asia-northeast3"
         }
+      },
+      {
+        "source": "/api/managelogin",
+        "function": {
+          "functionId": "managelogin",
+          "region": "asia-northeast3"
+        }
+      },
+      {
+        "source": "/api/jejumanage",
+        "function": {
+          "functionId": "jejumanage",
+          "region": "asia-northeast3"
+        }
       }
     ]
   },
