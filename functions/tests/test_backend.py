@@ -290,6 +290,7 @@ def test_ai_digest():
     dg = ai.build_digest(res)
     assert "기간 전체 비교표" in dg and "순별" in dg and "폭염일" in dg and "열대야" in dg and "무강수" in dg
     assert "2025년 7월 상순" in dg and len(dg) < 40000
+    assert "전년" not in dg.split("## 4.")[0] and "평년" not in dg.split("## 4.")[0] and "최근 5년" in dg
     # 연속 구간 찾기
     d = [f"2025-07-{i:02d}" for i in range(1, 11)]
     assert ai._spells(d, [True] * 3 + [False] + [True] * 6, 3) == [("2025-07-01", "2025-07-03", 3), ("2025-07-05", "2025-07-10", 6)]

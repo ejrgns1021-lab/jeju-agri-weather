@@ -44,7 +44,7 @@ async function run(getToken, getParams, refresh = false) {
   const card = $("ai-card");
   card.hidden = false;
   $("ai-body").innerHTML = '<div class="ai-wait"><span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>'
-    + "<p>조회한 기간의 기온·강수·일조·열대야를 전년, 최근 5년과 비교해 분석하고 있습니다. 보통 20~40초 걸립니다.</p></div>";
+    + "<p>조회한 기간을 최근 5년과 비교해 농작물에 영향을 줄 만한 기상 요인을 찾고 있습니다. 보통 15~30초 걸립니다.</p></div>";
   $("ai-meta").textContent = "";
   card.scrollIntoView({ behavior: "smooth", block: "start" });
   try {

@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 MODEL = "gemini-3.8-flash"          # Vertex AI 안정 버전 (2026-09 출시)
 LOCATION = "global"
-PROMPT_VERSION = 1                  # 프롬프트를 바꾸면 올려서 저장된 분석과 구분
+PROMPT_VERSION = 2                  # v2: 최근 5년 대비만, 특이 기상 요인만 기간 중심으로 짧게
 
 DRY_SPELL_DAYS = 7                  # 연속 무강수 기준(일)
 HEAT_DAY_C = 33.0                   # 폭염일: 일 최고기온
@@ -49,6 +49,13 @@ def _table_text(tbl: Dict[str, Any], max_rows: int = 60) -> str:
     lines = [" | ".join(map(str, tbl["columns"]))]
     lines += [" | ".join(map(str, r)) for r in tbl.get("rows", [])[:max_rows]]
     return "\n".join(lines)
+
+
+def _keep_cols(tbl: Dict[str, Any], head: Tuple[str, ...]) -> Dict[str, Any]:
+    """표에서 앞부분(구분·순·기간)과 '해당 연도 / 최근 5년' 관련 열만 남김 (전년·평년 열 제외)"""
+    cols = tbl.get("columns") or []
+    keep = [i for i, c in enumerate(cols) if c in head or c.startswith("해당 연도") or "최근 5년" in c or "최근5년" in c]
+    return {"columns": [cols[i] for i in keep], "rows": [[r[i] for i in keep] for r in tbl.get("rows") or []]}
 
 
 def _md(d: str) -> str:
@@ -145,29 +152,24 @@ def build_digest(result: Dict[str, Any]) -> str:
     p = result.get("params") or {}
     parts = [
         f"[조회 조건] 기간 {p.get('start')} ~ {p.get('end')} ({s.get('periodDays')}일), 지점 {', '.join(p.get('stations') or [])}",
-        f"[비교 기준] 해당 연도 {s.get('currentYear')}, 전년 {s.get('prevYear')}, 최근 5년 {s.get('recentRange')}, 평년 {s.get('normalNote', '1991~2020')}",
+        f"[비교 기준] 해당 연도 {s.get('currentYear')} vs 최근 5년 평균({s.get('recentRange')})",
         f"[집계 방법] {s.get('aggDesc', '')}",
         "",
-        "## 1. 기간 전체 비교표 (제주 전체 = 4개 지점 평균)",
-        _table_text((result.get("comparison") or {}).get("all") or {}),
+        "## 1. 기간 전체 비교표 (제주 전체 = 4개 지점 평균, 해당 연도 vs 최근 5년 평균)",
+        _table_text(_keep_cols((result.get("comparison") or {}).get("all") or {}, ("구분",))),
         "",
         "## 2. 지점별 값 (해당 연도)",
         _table_text(result.get("station") or {}),
         "",
-        "## 3. 순별(상·중·하순) 비교",
+        "## 3. 순별(상·중·하순) 비교 (해당 연도 vs 최근 5년 평균)",
     ]
     dek = result.get("dekad") or {}
     for metric, tbls in (dek.get("byMetric") or {}).items():
         t = (tbls or {}).get("all") or {}
         if not t.get("rows"):
             continue
-        cols = t["columns"]
-        keep = [c for c in cols if c in ("순", "기간") or c.startswith("해당 연도") or c.startswith("전년") and "대비" not in c
-                or c in ("최근 5년 평균", "평년 평균", "전년 대비", "최근 5년 대비", "평년 대비")]
-        idx = [cols.index(c) for c in keep]
         parts.append(f"### {metric}")
-        parts.append(" | ".join(keep))
-        parts += [" | ".join(str(r[i]) for i in idx) for r in t["rows"]]
+        parts.append(_table_text(_keep_cols(t, ("순", "기간"))))
     if dek.get("partial"):
         parts.append(f"(일부만 포함된 순: {', '.join(map(str, dek['partial']))})")
     parts += ["", "## 4. 일별 자료에서 찾은 주요 기상 사건 (해당 연도)"]
@@ -176,28 +178,28 @@ def build_digest(result: Dict[str, Any]) -> str:
 
 
 SYSTEM = """당신은 제주특별자치도 농업기술원의 농업기상 전문 지도사입니다.
-주어진 '분석 자료'의 수치만 근거로, 농가와 지도사가 바로 활용할 수 있는 기상 분석 보고를 한국어로 작성합니다.
+주어진 '분석 자료'의 수치만 근거로, 제주 농작물에 영향을 줄 만한 '특별한 기상 요인'만 골라 짧게 알려 줍니다.
 
-규칙
-- 자료에 없는 수치·날짜·사건을 만들지 마세요. 수치를 쓸 때는 자료의 값을 그대로 인용합니다.
-- 해당 연도를 '전년'과 '최근 5년 평균'과 비교하는 것을 중심으로, 평년은 보조로 언급합니다.
-- 막연한 설명 대신 "7월 중순~8월 상순(○일간) 무강수로 가뭄", "8월 하순 열대야가 전년보다 ○일 많음"처럼 시기와 크기를 구체적으로 씁니다.
-- 순별 비교와 일별 사건을 활용해 '언제' 무엇이 두드러졌는지 밝힙니다.
-- 농업적 영향은 제주 주요 작목(감귤·만감류, 월동채소: 양배추·브로콜리·무·당근·양파·마늘, 감자, 콩·메밀 등 밭작물, 시설작물) 가운데
-  해당 시기에 실제로 재배되는 작목을 골라, 기상 요인과 연결해 설명합니다. 확실하지 않은 영향은 "~할 수 있음"으로 표현합니다.
-- 지점(제주·서귀포·성산·고산) 간 차이가 크면 짚어 줍니다.
-- 문체는 보고서체(~임, ~함)로 간결하게. 전체 900~1400자 내외.
+가장 중요한 원칙
+1. 모든 항목은 그 기상 요인이 나타난 '기간'(예: 7/21~7/31, 11일간 / 8월 중순)으로 시작합니다. 기간이 없는 항목은 쓰지 않습니다.
+2. 비교는 '최근 5년 평균'과만 합니다. 전년·평년은 언급하지 않습니다.
+3. 평범한 수준(최근 5년과 비슷함)은 쓰지 않습니다. 아래처럼 뚜렷한 것만 고릅니다.
+   - 순별 강수량이 최근 5년의 50% 이하(가뭄·건조) 또는 200% 이상(과습)
+   - 연속 무강수 7일 이상, 지점 일강수량 80mm 이상 호우
+   - 순별 기온이 최근 5년보다 1.5℃ 이상 높거나 낮음, 폭염일·열대야가 여러 날 이어짐
+   - 최저기온 2℃ 이하(서리·저온), 일조 부족이 5일 이상 이어지거나 순별 일조가 최근 5년의 70% 이하
+4. 자료에 없는 수치·날짜를 만들지 않습니다. 수치는 자료 값을 그대로 씁니다.
+5. 농작물 영향은 그 시기에 제주에서 실제 재배·관리하는 작목(감귤·만감류, 월동채소: 양배추·브로콜리·무·당근·양파·마늘, 감자, 콩·메밀 등 밭작물, 시설작물)만 한 줄로 짚습니다. 불확실하면 "~우려"로 씁니다.
+6. 보고서체(~임, ~함), 전체 500자 안팎. 군더더기 설명·서론·맺음말 없이.
 
-출력 형식(마크다운)
-## 한눈에 보기
-- 핵심 3~4줄
-## 기온
-## 강수·가뭄
-## 일조
-## 시기별 주요 기상 사건
-- 날짜 구간별 목록
-## 농작물 영향과 관리 포인트
-- 작목별 또는 요인별로 3~6개
+출력 형식(마크다운, 이 형식 그대로)
+## 한 줄 요약
+(가장 두드러진 기상 요인 1~2개를 기간과 함께 한 문장)
+## 주의할 기상 요인
+- **기간(일수)** 요인 — 최근 5년 대비 수치 → 작목 영향
+(시간 순서, 최대 5개. 특별한 요인이 없으면 "- 최근 5년과 비교해 두드러진 기상 요인 없음" 한 줄)
+## 관리 포인트
+- 지금 또는 다음에 할 일 1~3개 (짧게)
 """
 
 
@@ -220,7 +222,7 @@ def generate(digest: str) -> str:
         resp = client.models.generate_content(
             model=MODEL,
             contents=f"다음 분석 자료로 기상 분석 보고를 작성해 주세요.\n\n{digest}",
-            config=types.GenerateContentConfig(system_instruction=SYSTEM, temperature=0.3, max_output_tokens=4096),
+            config=types.GenerateContentConfig(system_instruction=SYSTEM, temperature=0.2, max_output_tokens=2048),
         )
     except Exception as exc:
         msg = str(exc)
