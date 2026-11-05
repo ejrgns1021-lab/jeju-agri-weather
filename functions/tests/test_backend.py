@@ -291,7 +291,7 @@ def test_ai_digest():
     assert [x["name"] for x in res["stationBrief"]["stations"]] == ["제주", "서귀포", "성산", "고산"]
     for st in ("## 지점: 제주", "## 지점: 서귀포", "## 지점: 성산", "## 지점: 고산"):
         assert st in dg, st
-    assert "5년" in dg and "전년" not in dg and "평년" not in dg and "2025년 7월 상순" in dg and len(dg) < 80000
+    assert "5년" in dg and "전년" not in dg and "2025년 7월 상순" in dg and len(dg) < 80000
     assert ai.valid_result(res, req) and not ai.valid_result({"params": {"start": "2024-01-01"}}, req) and not ai.valid_result(None, req)
     no_sb = dict(res, stationBrief=None)
     assert not ai.valid_result(no_sb, req)
@@ -300,6 +300,12 @@ def test_ai_digest():
     class _R:
         def __init__(self, r): self.candidates = [_C(r)]
     assert ai._cut_off(_R("FinishReason.MAX_TOKENS")) and not ai._cut_off(_R("STOP")) and not ai._cut_off(object())
+    # 강수량 판정: 최근 5년·평년 둘 다보다 크게 적을 때만 부족, 둘 다보다 크게 많을 때만 과다
+    assert ai.rain_verdict(10, 40, 50) == "부족" and ai.rain_verdict(30, 25, 40) == "적정"
+    assert ai.rain_verdict(90, 30, 40) == "과다" and ai.rain_verdict(1, 2, 3) == "적정" and ai.rain_verdict(15, 40, 25) == "적정"
+    rain = res["stationBrief"]["stations"][0]["period"]["누적 강수량"]
+    assert len(rain) == 3 and rain[2] is not None and "판정:" in dg and "평년" in dg
+    assert len(res["stationBrief"]["stations"][0]["period"]["평균 기온"]) == 2   # 기온은 평년 없이 최근 5년만
     # 지점별 5년 평균은 그 지점 자료로 계산 (지점마다 값이 다름)
     p5 = [st["period"]["누적 강수량"][1] for st in res["stationBrief"]["stations"]]
     assert len(set(p5)) > 1, p5

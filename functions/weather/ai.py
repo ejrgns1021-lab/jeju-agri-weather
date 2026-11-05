@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 MODEL = "gemini-3.8-flash"          # Vertex AI 안정 버전 (2026-09 출시)
 LOCATION = "global"
-PROMPT_VERSION = 4                  # v4: v3(지점별 후 종합) + 답변 잘림 수정 — 잘린 v3 저장분은 쓰지 않음
+PROMPT_VERSION = 5                  # v5: 기온 등은 최근 5년, 강수량은 최근 5년+평년 적정 범위 판정
 
 DRY_SPELL_DAYS = 7                  # 연속 무강수 기준(일)
 HEAT_DAY_C = 33.0                   # 폭염일: 일 최고기온
@@ -160,6 +160,39 @@ def valid_result(res: Any, query: Dict[str, Any]) -> bool:
         return False
 
 
+RAIN_LOW, RAIN_HIGH, RAIN_MIN_MM = 0.5, 2.0, 5.0
+
+
+def rain_verdict(cur: Optional[float], five: Optional[float], normal: Optional[float]) -> str:
+    """강수량 판정: 최근 5년·평년 두 기준 모두의 50% 미만이면 '부족', 모두의 200% 초과면 '과다', 그 밖은 '적정'
+    (기준값이 둘 다 5mm 미만인 건조한 시기는 '적정')"""
+    refs = [x for x in (five, normal) if x is not None]
+    if cur is None or not refs:
+        return "판정불가"
+    if max(refs) < RAIN_MIN_MM:
+        return "적정"
+    if all(cur < RAIN_LOW * r for r in refs):
+        return "부족"
+    if all(r > 0 and cur > RAIN_HIGH * r for r in refs):
+        return "과다"
+    return "적정"
+
+
+def _rain(v: Any) -> str:
+    """[해당, 5년, 평년] → '12.3mm(5년 20.1mm 61%, 평년 30.0mm 41%) 판정:부족'"""
+    vals = list(v or []) + [None, None, None]
+    cur, five, normal = vals[:3]
+    if cur is None:
+        return "-"
+    pct = lambda r: f" {cur / r * 100:.0f}%" if r else ""
+    parts = []
+    if five is not None:
+        parts.append(f"5년 {five}mm{pct(five)}")
+    if normal is not None:
+        parts.append(f"평년 {normal}mm{pct(normal)}")
+    return f"{cur}mm({', '.join(parts)}) 판정:{rain_verdict(cur, five, normal)}"
+
+
 def _pair(v: Any, unit: str) -> str:
     """[해당, 5년] → '12.3mm(5년 20.1mm, 61%)'"""
     cur, avg = (v or [None, None])[:2]
@@ -213,6 +246,10 @@ def station_events(daily: Dict[str, Any], station: str) -> List[str]:
     return ev
 
 
+def _fmt_metric(m: str, v: Any) -> str:
+    return _rain(v) if m == "누적 강수량" else _pair(v, UNITS.get(m, ""))
+
+
 def build_digest(result: Dict[str, Any]) -> str:
     """제미나이에게 줄 분석 자료(텍스트): 지점마다 해당 연도 vs 그 지점의 최근 5년 평균 + 사건 구간"""
     s = result.get("summary") or {}
@@ -223,17 +260,18 @@ def build_digest(result: Dict[str, Any]) -> str:
         f"[조회 조건] 기간 {p.get('start')} ~ {p.get('end')} ({s.get('periodDays')}일)",
         f"[비교 기준] 해당 연도 {s.get('currentYear')} vs 같은 지점의 최근 5년 평균({sb.get('years') or s.get('recentRange')})",
         f"[집계 방법] {s.get('aggDesc', '')}",
-        "[표기] 값(5년 평균, 차이 또는 비율%) — 기온은 차이(℃), 강수량·일조·일수는 최근 5년 대비 비율(%)",
+        "[표기] 값(5년 평균, 차이 또는 비율%) — 기온은 차이(℃), 일조·일수는 최근 5년 대비 비율(%)",
+        "[강수량] 값(최근 5년·평년 대비 비율) 판정:적정/부족/과다 — 두 기준 모두의 50% 미만=부족, 모두의 200% 초과=과다, 그 밖=적정",
     ]
     for st in sb.get("stations") or []:
         name = st.get("name")
         parts += ["", f"## 지점: {name}",
-                  "기간 전체: " + " / ".join(f"{m} {_pair(st['period'].get(m), UNITS.get(m, ''))}" for m in metrics),
+                  "기간 전체: " + " / ".join(f"{m} {_fmt_metric(m, st['period'].get(m))}" for m in metrics),
                   "순별:"]
         for dk in st.get("dekads") or []:
             tag = " (일부)" if dk.get("partial") else ""
             parts.append(f"- {dk['label']}({dk['range']}){tag}: " +
-                         " / ".join(f"{m} {_pair(dk['values'].get(m), UNITS.get(m, ''))}" for m in metrics))
+                         " / ".join(f"{m} {_fmt_metric(m, dk['values'].get(m))}" for m in metrics))
         ev = station_events(result.get("daily") or {}, name)
         parts.append("일별 사건: " + ("; ".join(ev) if ev else "없음"))
     return "\n".join(parts)
@@ -245,9 +283,11 @@ SYSTEM = """당신은 제주특별자치도 농업기술원의 농업기상 전�
 
 가장 중요한 원칙
 1. 모든 항목은 그 기상 요인이 나타난 '기간'(예: 7/21~7/31, 11일간 / 8월 중순)으로 시작합니다. 기간이 없는 항목은 쓰지 않습니다.
-2. 비교는 '같은 지점의 최근 5년 평균'과만 합니다. 전년·평년은 언급하지 않습니다.
-3. 평범한 수준은 쓰지 않습니다. 아래처럼 뚜렷한 것만 고릅니다.
-   - 순별 강수량이 최근 5년의 50% 이하(가뭄·건조) 또는 200% 이상(과습), 연속 무강수 7일 이상, 일강수량 80mm 이상 호우
+2. 기온·일조·열대야·폭염 등은 '같은 지점의 최근 5년 평균'과만 비교합니다(온난화로 평년 기준은 맞지 않음). 전년은 언급하지 않습니다.
+3. 강수량은 자료의 '판정'을 그대로 따릅니다. '적정'이면 최근 5년이나 평년보다 적거나 많아도 문제로 쓰지 않습니다.
+   '부족'(가뭄·건조) 또는 '과다'(과습)일 때만 최근 5년·평년 대비 비율을 함께 적어 짚습니다.
+   연속 무강수는 그 기간이 들어 있는 순의 강수량 판정이 '부족'일 때만 가뭄으로 씁니다. 일강수량 80mm 이상 호우는 판정과 관계없이 씁니다.
+   그 밖에 뚜렷한 요인만 고릅니다.
    - 순별 기온이 최근 5년보다 1.5℃ 이상 높거나 낮음, 폭염일·열대야가 여러 날 이어짐(최근 5년보다 뚜렷이 많음)
    - 최저기온 2℃ 이하(서리·저온), 일조 부족 5일 이상 연속 또는 순별 일조가 최근 5년의 70% 이하
 4. 종합은 '여러 지점에서 공통으로 나타난 요인'과 '특정 지점에만 나타난 요인'을 구분해 씁니다. 평균값으로 뭉뚱그리지 않습니다.
