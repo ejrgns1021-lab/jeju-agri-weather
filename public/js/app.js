@@ -327,31 +327,7 @@ function renderComparison() {
   document.querySelectorAll("#layout-switch button").forEach((b) => b.classList.toggle("active", b.dataset.layout === state.layout));
 }
 
-/** 선택한 관측 지점에 맞춘 평균 설명 (예: "제주·서귀포 2개 지점 평균", 4개 모두면 "제주 전체(4개 지점 평균)") */
-function scopeLabel(res) {
-  const st = (res && res.params && res.params.stations) || [];
-  if (st.length >= 4) return "제주 전체(4개 지점 평균)";
-  if (st.length === 1) return `${st[0]} 지점`;
-  return `${st.join("·")} ${st.length}개 지점 평균`;
-}
-
-/** 4개 지점을 다 고르지 않았으면 표의 '제주 전체 평균' 표기를 '선택 지점 평균'으로 (값은 그대로) */
-function relabelScope(res) {
-  const st = (res && res.params && res.params.stations) || [];
-  if (!res || !res.ok || st.length >= 4) return;
-  const label = st.length === 1 ? `${st[0]} 지점` : `선택 지점 평균(${st.join("·")})`;
-  const fix = (v) => (typeof v === "string" ? v.replace("제주 전체 평균", label) : v);
-  const fixTable = (t) => {
-    if (!t || !t.columns) return;
-    t.columns = t.columns.map(fix);
-    t.rows = (t.rows || []).map((r) => r.map(fix));
-  };
-  fixTable(res.station);
-  Object.values(res.daily || {}).forEach(fixTable);
-}
-
 function renderResult(res) {
-  relabelScope(res);
   renderNotices(res.notices || []);
   extra("brief", (m) => m.resetAi(!!res.ok));   // 새 조회 결과마다 AI 분석은 버튼을 다시 눌러야 함
   if (!res.ok) {
@@ -377,7 +353,6 @@ function renderResult(res) {
         el("span", { class: "stat-label", text: k }), el("strong", { text: v }), el("span", { class: "stat-sub", text: sub })))),
   );
   renderMetricCards(res);
-  $("metric-scope").textContent = `${scopeLabel(res)} · 기준값과의 차이`;
 
   $("cmp-caption").textContent = `${s.aggDesc}. 결측 지점은 제외하고 나머지 지점 평균으로 산출. ` +
     "대비(편차)=해당 연도−기준값, 대비(비율)=해당 연도÷기준값×100(%). '-' 는 자료 없음.";
@@ -391,7 +366,7 @@ function renderResult(res) {
   $("basis-note").textContent = `평년: ${s.normalNote} · 조회 시각 ${res.fetchedAt}`;
 
   $("station-table").replaceChildren(
-    el("p", { class: "muted small", text: `지점별 기간 집계와 ${scopeLabel(res)}(결측 제외)` }),
+    el("p", { class: "muted small", text: "지점별 기간 집계와 4개 지점 평균(결측 제외)" }),
     tableBlock(res.station, `지점별요약_${tag}`));
 
   const sel = $("daily-metric");
@@ -402,7 +377,7 @@ function renderResult(res) {
   sel.onchange = drawDaily;
   drawDaily();
 
-  const yearly = [el("p", { class: "muted small", text: `전년 및 최근 5년 각 연도의 동일 기간 ${scopeLabel(res)} 집계값` }),
+  const yearly = [el("p", { class: "muted small", text: "전년 및 최근 5년 각 연도의 동일 기간 제주 전체 집계값" }),
     res.recent ? tableBlock(res.recent, `최근5년_${tag}`) : el("p", { class: "muted", text: "최근 5년 자료가 없습니다." })];
   if (res.normal30) {
     yearly.push(el("p", { class: "muted small gap", text: "평년(1991~2020) 각 연도의 동일 기간 집계값" }),
@@ -531,7 +506,7 @@ async function exportAll() {
   const info = [`조회 기간: ${fmtDate(p.start)} ~ ${fmtDate(p.end)}`, `관측 지점: ${(p.stations || []).join(", ")}`,
     `평년 기준: ${res.summary.normalNote}`, `조회 시각: ${res.fetchedAt}`];
   const sheets = [
-    { name: "비교표", title: `${scopeLabel(res)} 기상 비교표`, notes: info, table: res.comparison.all },
+    { name: "비교표", title: "제주 전체(4개 지점 평균) 기상 비교표", notes: info, table: res.comparison.all },
     { name: "산출 근거", table: res.basis },
     { name: "지점별 요약", table: res.station },
     ...p.metrics.filter((m) => res.daily && res.daily[m]).map((m) => ({ name: `일별_${m}`, table: res.daily[m] })),
