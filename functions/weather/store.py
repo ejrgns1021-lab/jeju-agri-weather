@@ -365,3 +365,38 @@ def forecast_put(data: Dict[str, Any], key: str = "jeju") -> None:
             client.collection(FORECAST_COLLECTION).document(key + "_last").set(doc)
     except Exception as exc:
         log.warning("예보 저장 실패: %s", exc)
+
+
+# ---------------------------------------------------------------------
+# 6) AI 기상분석 결과 — 같은 조회 조건이면 다시 부르지 않고 재사용
+#    (확정 기간은 영구, 최근 기간은 6시간)
+# ---------------------------------------------------------------------
+AI_COLLECTION = "ai_analysis"
+
+
+def ai_get(key: str) -> Optional[Dict[str, Any]]:
+    client = _get_client()
+    if client is None:
+        return None
+    try:
+        snap = client.collection(AI_COLLECTION).document(key).get()
+        if not snap.exists:
+            return None
+        p = snap.to_dict() or {}
+        if not p.get("final") and time.time() - float(p.get("ts") or 0) > RECENT_TTL_SEC:
+            return None
+        return json.loads(p["data"])
+    except Exception as exc:
+        log.warning("저장된 AI 분석 읽기 실패: %s", exc)
+        return None
+
+
+def ai_put(key: str, data: Dict[str, Any], final: bool) -> None:
+    client = _get_client()
+    if client is None:
+        return
+    try:
+        client.collection(AI_COLLECTION).document(key).set({
+            "data": json.dumps(data, ensure_ascii=False, default=str), "ts": time.time(), "final": bool(final)})
+    except Exception as exc:
+        log.warning("AI 분석 저장 실패: %s", exc)

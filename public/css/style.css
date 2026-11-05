@@ -599,3 +599,37 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
 .fc-pop { color: var(--muted); font-size: 12px; }
 .fc-src { margin: 0; font-size: 12px; }
 @media (max-width: 600px) { .fc-line { font-size: 14px; } .fc-sep { display: none; } .fc-toggle { width: 100%; justify-content: center; } }
+
+
+/* ---------------------------------------------------------------- AI 기상분석 (v7.0) */
+.period-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ai-btn {
+  background: linear-gradient(135deg, #5b5bd6, #2f6f9f); color: #fff; border: 0; min-height: 46px; padding: 10px 18px;
+  font-size: 15px; font-weight: 700; border-radius: 12px; box-shadow: 0 4px 14px rgba(70, 80, 190, .3);
+}
+.ai-btn:hover { filter: brightness(1.07); }
+.ai-btn .ic { width: 20px; height: 20px; }
+.ai-btn.busy { opacity: .8; cursor: progress; }
+.ai-btn.busy .ic { animation: ai-spin 1.6s linear infinite; }
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+.ai-card { border: 1px solid color-mix(in srgb, #5b5bd6 25%, var(--line)); }
+.ai-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.ai-head h3 { font-size: 17px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; }
+.ai-head h3 .ic { color: #5b5bd6; }
+.ai-actions { display: flex; gap: 6px; }
+.ai-body { font-size: 15px; line-height: 1.7; }
+.ai-body h4 { font-size: 15.5px; margin: 16px 0 6px; padding-left: 10px; border-left: 3px solid #5b5bd6; color: var(--ink); }
+.ai-body h4:first-child { margin-top: 4px; }
+.ai-body p { margin: 4px 0; }
+.ai-body ul { margin: 4px 0 8px; padding-left: 20px; }
+.ai-body li { margin: 3px 0; }
+.ai-body strong { color: var(--ink); }
+.ai-meta { margin: 12px 0 0; font-size: 12px; }
+.ai-err { color: var(--err-ink); background: var(--err-bg); border: 1px solid var(--err-line); border-radius: var(--radius-sm); padding: 10px 12px; }
+.ai-wait { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--muted); }
+.ai-wait p { margin: 0 0 0 6px; flex: 1 1 240px; }
+.ai-dot { width: 8px; height: 8px; border-radius: 50%; background: #5b5bd6; animation: ai-blink 1.2s infinite ease-in-out; }
+.ai-dot:nth-child(2) { animation-delay: .2s; } .ai-dot:nth-child(3) { animation-delay: .4s; }
+@keyframes ai-blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+@media (max-width: 600px) { .ai-btn { width: 100%; justify-content: center; } }
+@media (prefers-color-scheme: dark) { .ai-body h4 { border-left-color: #9da1f0; } .ai-head h3 .ic { color: #9da1f0; } }

@@ -54,6 +54,13 @@
           "functionId": "jejuforecast",
           "region": "asia-northeast3"
         }
+      },
+      {
+        "source": "/api/jejuai",
+        "function": {
+          "functionId": "jejuai",
+          "region": "asia-northeast3"
+        }
       }
     ]
   },

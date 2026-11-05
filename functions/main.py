@@ -7,6 +7,7 @@ main.py - Firebase Cloud Functions (Python) 진입점
                (이름에 'analyze' 등을 쓰면 브라우저 광고·추적 차단 기능이 요청을 막으므로 중립적인 이름 사용)
   jejuprogress: 조회 진행 상황(단계·진행률) 확인, 60초가 넘는 조회는 완료 후 결과도 여기서 전달
   jejuforecast: 대시보드 상단 예보(단기·중기) — 20분간 저장해 재사용
+  jejuai     : [AI 기상분석] 버튼을 누를 때만 — 조회 결과를 간추려 제미나이(Vertex AI)가 농업 관점 해설 작성
 
 두 함수 모두 '호출 가능 함수(callable)' 이며, 화면(public/js/api.js)이 호출합니다.
 비밀번호와 기상청 API 키는 Secret Manager 에 저장된 값을 사용합니다.
@@ -27,6 +28,7 @@ from firebase_functions.params import SecretParam
 from weather import auth
 from weather import store
 from weather import forecast as fc
+from weather import ai
 from weather.kma_api import WeatherApiError, WeatherApiTimeoutError
 from weather.pipeline import InputError, run_analysis, validate_request
 
@@ -166,3 +168,40 @@ def jejuforecast(req: https_fn.CallableRequest) -> Dict[str, Any]:
                 result.setdefault("stale", {})[part] = last.get("fetchedAt", "")
     store.forecast_put(result)
     return result
+
+
+@https_fn.on_call(secrets=[APP_PASSWORD, KMA_API_KEY], invoker="public", memory=options.MemoryOption.GB_1, cpu=1,
+                  timeout_sec=300, concurrency=4)
+def jejuai(req: https_fn.CallableRequest) -> Dict[str, Any]:
+    """조회한 기간의 기상을 AI가 분석 (버튼을 누를 때만 호출, 같은 조건은 저장된 분석 재사용)"""
+    data = req.data or {}
+    if not auth.verify_token(str(data.get("token", "")), APP_PASSWORD.value or ""):
+        raise _fail(https_fn.FunctionsErrorCode.UNAUTHENTICATED, "로그인이 만료되었습니다. 다시 로그인해 주세요.")
+    api_key = (KMA_API_KEY.value or "").strip()
+    try:
+        query = validate_request(data.get("query") or {})
+    except InputError as exc:
+        raise _fail(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, str(exc))
+    rkey = store.result_key(query)
+    akey = f"{rkey}_ai{ai.PROMPT_VERSION}_{ai.MODEL}"
+    final = store.is_finalized(query["end"].strftime("%Y%m%d"))
+    if not data.get("refresh"):
+        saved = store.ai_get(akey)
+        if saved:
+            saved["cached"] = True
+            return saved
+    try:
+        result = store.result_get(rkey) or run_analysis(query, api_key)   # 방금 조회한 결과는 저장돼 있어 바로 사용
+        digest = ai.build_digest(result)
+        text = ai.generate(digest)
+    except ai.AiError as exc:
+        raise _fail(https_fn.FunctionsErrorCode.FAILED_PRECONDITION, str(exc))
+    except (WeatherApiError, WeatherApiTimeoutError) as exc:
+        raise _fail(https_fn.FunctionsErrorCode.UNAVAILABLE, f"기상 자료를 다시 불러오지 못했습니다: {_redact(exc, api_key)}")
+    except Exception as exc:
+        log.error("AI 분석 오류: %s", _redact(repr(exc), api_key))
+        raise _fail(https_fn.FunctionsErrorCode.INTERNAL, "AI 분석 중 오류가 발생했습니다.")
+    out = {"text": text, "model": ai.MODEL, "createdAt": time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + 9 * 3600)),
+           "period": f"{query['start']:%Y-%m-%d} ~ {query['end']:%Y-%m-%d}"}
+    store.ai_put(akey, out, final=final)
+    return out
