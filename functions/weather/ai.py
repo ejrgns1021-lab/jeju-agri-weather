@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 MODEL = "gemini-3.8-flash"          # Vertex AI 안정 버전 (2026-09 출시)
 LOCATION = "global"
-PROMPT_VERSION = 2                  # v2: 최근 5년 대비만, 특이 기상 요인만 기간 중심으로 짧게
+PROMPT_VERSION = 3                  # v3: 지점별로 분석한 뒤 종합 (제주 전체 평균의 착시 방지)
 
 DRY_SPELL_DAYS = 7                  # 연속 무강수 기준(일)
 HEAT_DAY_C = 33.0                   # 폭염일: 일 최고기온
@@ -146,70 +146,129 @@ def detect_events(daily: Dict[str, Any]) -> List[str]:
     return ev
 
 
+UNITS = {"평균 기온": "℃", "최고 기온": "℃", "최저 기온": "℃", "누적 강수량": "mm", "일조 시간": "hr", "강우일수": "일", "열대야 일수": "일"}
+
+
 def valid_result(res: Any, query: Dict[str, Any]) -> bool:
-    """화면이 보낸 결과가 이 조회 조건의 것인지 간단히 확인"""
+    """화면이 보낸 결과가 이 조회 조건의 것이고 지점별 비교 자료가 들어 있는지 간단히 확인"""
     try:
         p = res["params"]
-        return (isinstance(res.get("daily"), dict) and isinstance(res.get("comparison"), dict)
+        return (isinstance(res.get("daily"), dict) and isinstance(res.get("stationBrief"), dict)
+                and bool(res["stationBrief"].get("stations"))
                 and p["start"] == query["start"].isoformat() and p["end"] == query["end"].isoformat())
     except (KeyError, TypeError, AttributeError):
         return False
 
 
+def _pair(v: Any, unit: str) -> str:
+    """[해당, 5년] → '12.3mm(5년 20.1mm, 61%)'"""
+    cur, avg = (v or [None, None])[:2]
+    if cur is None:
+        return "-"
+    if avg is None:
+        return f"{cur}{unit}"
+    if unit in ("mm", "hr", "일") and avg:
+        return f"{cur}{unit}(5년 {avg}{unit}, {cur / avg * 100:.0f}%)"
+    d = cur - avg
+    return f"{cur}{unit}(5년 {avg}{unit}, {d:+.1f})"
+
+
+def station_events(daily: Dict[str, Any], station: str) -> List[str]:
+    """한 지점의 일별 자료에서 사건 구간 찾기 (해당 연도)"""
+    ev: List[str] = []
+    d, _, per = _daily_series(daily, "누적 강수량")
+    rain = per.get(station) or []
+    if d and rain:
+        dry = _spells(d, [r is not None and r < 0.1 for r in rain], DRY_SPELL_DAYS)
+        ev.append(f"연속 무강수({DRY_SPELL_DAYS}일 이상): {_fmt_spells(dry)}")
+        heavy = [f"{_md(x)} {r:.0f}mm" for x, r in zip(d, rain) if r is not None and r >= HEAVY_RAIN_MM]
+        if heavy:
+            ev.append(f"호우({HEAVY_RAIN_MM:.0f}mm 이상): {', '.join(heavy)}")
+    d, _, per = _daily_series(daily, "최고 기온")
+    tmax = per.get(station) or []
+    if d and tmax:
+        hot = [x is not None and x >= HEAT_DAY_C for x in tmax]
+        if sum(hot):
+            ev.append(f"폭염일(최고 {HEAT_DAY_C:.0f}℃ 이상) {sum(hot)}일, 연속 {_fmt_spells(_spells(d, hot, 3))}")
+        vals = [(x, i) for i, x in enumerate(tmax) if x is not None]
+        if vals:
+            mx = max(vals)
+            ev.append(f"최고기온 극값 {_md(d[mx[1]])} {mx[0]:.1f}℃")
+    d, _, per = _daily_series(daily, "최저 기온")
+    tmin = per.get(station) or []
+    if d and tmin:
+        trop = [x is not None and x >= TROPICAL_C for x in tmin]
+        if sum(trop):
+            ev.append(f"열대야(최저 {TROPICAL_C:.0f}℃ 이상) {sum(trop)}일, 연속 {_fmt_spells(_spells(d, trop, 3))}")
+        frost = [(x, i) for i, x in enumerate(tmin) if x is not None and x <= FROST_C]
+        if frost:
+            low = min(frost)
+            ev.append(f"저온·서리 위험(최저 {FROST_C:.0f}℃ 이하) {len(frost)}일, 최저 {_md(d[low[1]])} {low[0]:.1f}℃")
+    d, _, per = _daily_series(daily, "일조 시간")
+    sun = per.get(station) or []
+    if d and sun:
+        dim = _spells(d, [x is not None and x < LOW_SUN_HR for x in sun], LOW_SUN_DAYS)
+        if dim:
+            ev.append(f"일조 부족 연속({LOW_SUN_DAYS}일 이상, {LOW_SUN_HR:.0f}시간 미만): {_fmt_spells(dim)}")
+    return ev
+
+
 def build_digest(result: Dict[str, Any]) -> str:
-    """제미나이에게 줄 분석 자료(텍스트). 수치는 조회 결과 그대로"""
+    """제미나이에게 줄 분석 자료(텍스트): 지점마다 해당 연도 vs 그 지점의 최근 5년 평균 + 사건 구간"""
     s = result.get("summary") or {}
     p = result.get("params") or {}
+    sb = result.get("stationBrief") or {}
+    metrics = sb.get("metrics") or []
     parts = [
-        f"[조회 조건] 기간 {p.get('start')} ~ {p.get('end')} ({s.get('periodDays')}일), 지점 {', '.join(p.get('stations') or [])}",
-        f"[비교 기준] 해당 연도 {s.get('currentYear')} vs 최근 5년 평균({s.get('recentRange')})",
+        f"[조회 조건] 기간 {p.get('start')} ~ {p.get('end')} ({s.get('periodDays')}일)",
+        f"[비교 기준] 해당 연도 {s.get('currentYear')} vs 같은 지점의 최근 5년 평균({sb.get('years') or s.get('recentRange')})",
         f"[집계 방법] {s.get('aggDesc', '')}",
-        "",
-        "## 1. 기간 전체 비교표 (제주 전체 = 4개 지점 평균, 해당 연도 vs 최근 5년 평균)",
-        _table_text(_keep_cols((result.get("comparison") or {}).get("all") or {}, ("구분",))),
-        "",
-        "## 2. 지점별 값 (해당 연도)",
-        _table_text(result.get("station") or {}),
-        "",
-        "## 3. 순별(상·중·하순) 비교 (해당 연도 vs 최근 5년 평균)",
+        "[표기] 값(5년 평균, 차이 또는 비율%) — 기온은 차이(℃), 강수량·일조·일수는 최근 5년 대비 비율(%)",
     ]
-    dek = result.get("dekad") or {}
-    for metric, tbls in (dek.get("byMetric") or {}).items():
-        t = (tbls or {}).get("all") or {}
-        if not t.get("rows"):
-            continue
-        parts.append(f"### {metric}")
-        parts.append(_table_text(_keep_cols(t, ("순", "기간"))))
-    if dek.get("partial"):
-        parts.append(f"(일부만 포함된 순: {', '.join(map(str, dek['partial']))})")
-    parts += ["", "## 4. 일별 자료에서 찾은 주요 기상 사건 (해당 연도)"]
-    parts += detect_events(result.get("daily") or {})
+    for st in sb.get("stations") or []:
+        name = st.get("name")
+        parts += ["", f"## 지점: {name}",
+                  "기간 전체: " + " / ".join(f"{m} {_pair(st['period'].get(m), UNITS.get(m, ''))}" for m in metrics),
+                  "순별:"]
+        for dk in st.get("dekads") or []:
+            tag = " (일부)" if dk.get("partial") else ""
+            parts.append(f"- {dk['label']}({dk['range']}){tag}: " +
+                         " / ".join(f"{m} {_pair(dk['values'].get(m), UNITS.get(m, ''))}" for m in metrics))
+        ev = station_events(result.get("daily") or {}, name)
+        parts.append("일별 사건: " + ("; ".join(ev) if ev else "없음"))
     return "\n".join(parts)
 
 
 SYSTEM = """당신은 제주특별자치도 농업기술원의 농업기상 전문 지도사입니다.
-주어진 '분석 자료'의 수치만 근거로, 제주 농작물에 영향을 줄 만한 '특별한 기상 요인'만 골라 짧게 알려 줍니다.
+제주는 지점(제주·서귀포·성산·고산)마다 기상이 크게 다르므로, 4개 지점 평균으로 판단하지 않습니다.
+주어진 '분석 자료'의 수치만 근거로, 먼저 지점별로 농작물에 영향을 줄 만한 '특별한 기상 요인'을 찾고, 그 결과를 종합합니다.
 
 가장 중요한 원칙
 1. 모든 항목은 그 기상 요인이 나타난 '기간'(예: 7/21~7/31, 11일간 / 8월 중순)으로 시작합니다. 기간이 없는 항목은 쓰지 않습니다.
-2. 비교는 '최근 5년 평균'과만 합니다. 전년·평년은 언급하지 않습니다.
-3. 평범한 수준(최근 5년과 비슷함)은 쓰지 않습니다. 아래처럼 뚜렷한 것만 고릅니다.
-   - 순별 강수량이 최근 5년의 50% 이하(가뭄·건조) 또는 200% 이상(과습)
-   - 연속 무강수 7일 이상, 지점 일강수량 80mm 이상 호우
-   - 순별 기온이 최근 5년보다 1.5℃ 이상 높거나 낮음, 폭염일·열대야가 여러 날 이어짐
-   - 최저기온 2℃ 이하(서리·저온), 일조 부족이 5일 이상 이어지거나 순별 일조가 최근 5년의 70% 이하
-4. 자료에 없는 수치·날짜를 만들지 않습니다. 수치는 자료 값을 그대로 씁니다.
-5. 농작물 영향은 그 시기에 제주에서 실제 재배·관리하는 작목(감귤·만감류, 월동채소: 양배추·브로콜리·무·당근·양파·마늘, 감자, 콩·메밀 등 밭작물, 시설작물)만 한 줄로 짚습니다. 불확실하면 "~우려"로 씁니다.
-6. 보고서체(~임, ~함), 전체 500자 안팎. 군더더기 설명·서론·맺음말 없이.
+2. 비교는 '같은 지점의 최근 5년 평균'과만 합니다. 전년·평년은 언급하지 않습니다.
+3. 평범한 수준은 쓰지 않습니다. 아래처럼 뚜렷한 것만 고릅니다.
+   - 순별 강수량이 최근 5년의 50% 이하(가뭄·건조) 또는 200% 이상(과습), 연속 무강수 7일 이상, 일강수량 80mm 이상 호우
+   - 순별 기온이 최근 5년보다 1.5℃ 이상 높거나 낮음, 폭염일·열대야가 여러 날 이어짐(최근 5년보다 뚜렷이 많음)
+   - 최저기온 2℃ 이하(서리·저온), 일조 부족 5일 이상 연속 또는 순별 일조가 최근 5년의 70% 이하
+4. 종합은 '여러 지점에서 공통으로 나타난 요인'과 '특정 지점에만 나타난 요인'을 구분해 씁니다. 평균값으로 뭉뚱그리지 않습니다.
+5. 자료에 없는 수치·날짜를 만들지 않습니다. 수치는 자료 값을 그대로 씁니다.
+6. 농작물 영향은 그 시기 제주에서 실제 재배·관리하는 작목(감귤·만감류, 월동채소: 양배추·브로콜리·무·당근·양파·마늘, 감자, 콩·메밀 등 밭작물, 시설작물)만 짧게 짚고, 해당 지역 주산지를 고려합니다
+   (예: 성산·구좌 동부 당근·무, 고산·한경·대정 서부 양배추·브로콜리·마늘, 서귀포 남부 감귤·만감류). 불확실하면 "~우려"로 씁니다.
+7. 보고서체(~임, ~함). 군더더기 설명·서론·맺음말 없이. 전체 700~1000자.
 
 출력 형식(마크다운, 이 형식 그대로)
-## 한 줄 요약
-(가장 두드러진 기상 요인 1~2개를 기간과 함께 한 문장)
-## 주의할 기상 요인
-- **기간(일수)** 요인 — 최근 5년 대비 수치 → 작목 영향
-(시간 순서, 최대 5개. 특별한 요인이 없으면 "- 최근 5년과 비교해 두드러진 기상 요인 없음" 한 줄)
+## 종합
+- 공통: (여러 지점에서 나타난 요인, 기간과 해당 지점)
+- 지점 차이: (특정 지점에만 두드러진 요인, 기간과 지점)
+## 지점별 주의 기상 요인
+### 제주
+- **기간(일수)** 요인 — 수치(최근 5년 대비) → 작목 영향
+### 서귀포
+### 성산
+### 고산
+(지점마다 시간 순서로 최대 3개. 해당 없으면 "- 두드러진 요인 없음")
 ## 관리 포인트
-- 지금 또는 다음에 할 일 1~3개 (짧게)
+- 지역·작목별로 할 일 1~3개 (짧게)
 """
 
 

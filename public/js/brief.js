@@ -21,7 +21,7 @@ function mdToHtml(md) {
     const h = line.match(/^(#{1,4})\s+(.*)$/);
     const li = line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)$/);
     if ((h || !li) && list) { out.push(`<ul>${buf}</ul>`); buf = ""; list = false; }
-    if (h) { out.push(`<h4>${inline(h[2])}</h4>`); continue; }
+    if (h) { out.push(h[1].length >= 3 ? `<h5>${inline(h[2])}</h5>` : `<h4>${inline(h[2])}</h4>`); continue; }
     if (li) { list = true; buf += `<li>${inline(li[1])}</li>`; continue; }
     if (line.trim()) out.push(`<p>${inline(line)}</p>`);
   }
@@ -38,14 +38,8 @@ function setButton(state) {
 
 /** AI에 필요한 표만 골라 보냄 (서버가 기상청에 다시 묻지 않도록) */
 function pickResult(res) {
-  const byMetric = {};
-  Object.entries((res.dekad && res.dekad.byMetric) || {}).forEach(([k, v]) => { byMetric[k] = { all: v.all }; });
-  return {
-    params: res.params, summary: res.summary,
-    comparison: { all: res.comparison && res.comparison.all },
-    station: res.station, daily: res.daily,
-    dekad: { byMetric, partial: res.dekad && res.dekad.partial },
-  };
+  // 지점별 비교(stationBrief)와 일별 자료만 있으면 됨 — 제주 전체 평균표는 보내지 않음(평균의 착시 방지)
+  return { params: res.params, summary: res.summary, stationBrief: res.stationBrief, daily: res.daily };
 }
 
 async function run(getToken, getResult, refresh = false) {
@@ -57,7 +51,7 @@ async function run(getToken, getResult, refresh = false) {
   const card = $("ai-card");
   card.hidden = false;
   $("ai-body").innerHTML = '<div class="ai-wait"><span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>'
-    + "<p>조회한 기간을 최근 5년과 비교해 농작물에 영향을 줄 만한 기상 요인을 찾고 있습니다. 보통 15~30초 걸립니다.</p></div>";
+    + "<p>제주·서귀포·성산·고산 지점별로 최근 5년과 비교해 농작물에 영향을 줄 만한 기상 요인을 찾고 종합하는 중입니다. 보통 20~40초 걸립니다.</p></div>";
   $("ai-meta").textContent = "";
   card.scrollIntoView({ behavior: "smooth", block: "start" });
   try {

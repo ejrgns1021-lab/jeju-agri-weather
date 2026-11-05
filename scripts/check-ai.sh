@@ -15,9 +15,7 @@ RES="$(Q="$Q" K="$K" ./venv/bin/python -c "
 import os, json, sys; sys.path.insert(0, '.')
 from weather import pipeline
 r = pipeline.run_analysis(pipeline.validate_request(json.loads(os.environ['Q'])), os.environ['K'])
-keep = {k: r[k] for k in ('params', 'summary', 'station', 'daily')}
-keep['comparison'] = {'all': r['comparison']['all']}
-keep['dekad'] = {'byMetric': {m: {'all': v['all']} for m, v in r['dekad']['byMetric'].items()}, 'partial': r['dekad']['partial']}
+keep = {k: r[k] for k in ('params', 'summary', 'stationBrief', 'daily')}
 print(json.dumps(keep, ensure_ascii=False, default=str))")"
 printf '{"data":{"token":"%s","query":%s,"result":%s%s}}' "$TOKEN" "$Q" "$RES" "${REFRESH:+,\"refresh\":true}" > ~/ai-req.json
 echo "보낼 자료 $(wc -c < ~/ai-req.json) bytes"

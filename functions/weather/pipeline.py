@@ -25,6 +25,7 @@ from .kma_api import (
     normals_for_period,
 )
 from .dekad import build_dekad_tables
+from .station_dekad import build_station_brief
 from .processing import (
     NORMAL_END_YEAR,
     NORMAL_START_YEAR,
@@ -275,6 +276,14 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     except Exception as exc:  # pragma: no cover - 방어용
         notices.append({"level": "info", "text": f"순별 집계를 만들지 못했습니다: {exc}"})
 
+    # 지점별 해당 연도 vs 최근 5년 (AI 기상분석용, v7.1) — 이미 받아 둔 자료 재사용, 실패해도 다른 결과에 영향 없음
+    station_brief = None
+    try:
+        station_brief = build_station_brief(start, end, metric_names, extreme, current_df, fetch_period,
+                                            recent_years, station_ids)
+    except Exception:  # pragma: no cover - 방어용
+        station_brief = None
+
     daily_raw_text = ""
     if diag_future is not None:
         try:
@@ -341,6 +350,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         "normal30": yearly_table(normal_yearly_df, metric_names),
         "raw": table_json(format_report(raw_df, decimals=1, int_cols=["지점번호"])),
         "dekad": dekad,
+        "stationBrief": station_brief,
         "diagnostics": {
             "dailyRawText": daily_raw_text[:6000],
             "dailyColumns": detected_columns(daily_raw_text, DEFAULT_DAILY_COLS) if daily_raw_text else [],

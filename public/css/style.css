@@ -620,6 +620,7 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
 .ai-body { font-size: 15px; line-height: 1.7; }
 .ai-body h4 { font-size: 15.5px; margin: 16px 0 6px; padding-left: 10px; border-left: 3px solid #5b5bd6; color: var(--ink); }
 .ai-body h4:first-child { margin-top: 4px; }
+.ai-body h5 { font-size: 14.5px; margin: 12px 0 2px; color: var(--brand); }
 .ai-body p { margin: 4px 0; }
 .ai-body ul { margin: 4px 0 8px; padding-left: 20px; }
 .ai-body li { margin: 6px 0; }
