@@ -369,3 +369,14 @@ def _cut_off(resp: Any) -> bool:
     except (AttributeError, IndexError, TypeError):
         return False
     return "MAX_TOKENS" in str(reason)
+
+
+def ping() -> str:
+    """관리자 연결 점검용: 아주 짧은 요청으로 제미나이 응답 확인"""
+    from google import genai
+    from google.genai import types
+    client = genai.Client(enterprise=True, project=_project_id(), location=LOCATION,
+                          http_options=types.HttpOptions(timeout=30_000))
+    resp = client.models.generate_content(model=MODEL, contents="'정상'이라는 한 단어로만 답하세요.",
+                                          config=types.GenerateContentConfig(max_output_tokens=256, temperature=0))
+    return (getattr(resp, "text", None) or "").strip()[:40]

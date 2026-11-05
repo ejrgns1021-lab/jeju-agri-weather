@@ -7,6 +7,7 @@ main.py - Firebase Cloud Functions (Python) 진입점
                (이름에 'analyze' 등을 쓰면 브라우저 광고·추적 차단 기능이 요청을 막으므로 중립적인 이름 사용)
   jejuprogress: 조회 진행 상황(단계·진행률) 확인, 60초가 넘는 조회는 완료 후 결과도 여기서 전달
   jejuforecast: 대시보드 상단 예보(단기·중기) — 20분간 저장해 재사용
+  managelogin / jejumanage : 관리자 화면(/manage.html) — 이용 현황, 저장분 비우기, 연결 점검
   jejubrief  : [AI 기상분석] 버튼을 누를 때만 — 조회 결과를 간추려 제미나이(Vertex AI)가 농업 관점 해설 작성
 
 두 함수 모두 '호출 가능 함수(callable)' 이며, 화면(public/js/api.js)이 호출합니다.
@@ -29,11 +30,13 @@ from weather import auth
 from weather import store
 from weather import forecast as fc
 from weather import ai
+from weather import usage
 from weather.kma_api import WeatherApiError, WeatherApiTimeoutError
 from weather.pipeline import InputError, run_analysis, validate_request
 
 APP_PASSWORD = SecretParam("APP_PASSWORD")
 KMA_API_KEY = SecretParam("KMA_API_KEY")
+ADMIN_PASSWORD = SecretParam("ADMIN_PASSWORD")   # 관리자 화면 전용 (공용 비밀번호와 별개)
 
 REGION = "asia-northeast3"          # 서울
 SERVER_DELAY_MSG = "기상청 서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."
@@ -68,6 +71,7 @@ def login(req: https_fn.CallableRequest) -> Dict[str, Any]:
         time.sleep(1.0)  # 무작위 대입 지연
         raise _fail(https_fn.FunctionsErrorCode.UNAUTHENTICATED, "비밀번호가 올바르지 않습니다.")
     token, exp = auth.issue_token(expected)
+    usage.record("login", data.get("cid"))
     return {"token": token, "expiresAt": exp}
 
 
@@ -95,6 +99,7 @@ def jejuweather(req: https_fn.CallableRequest) -> Dict[str, Any]:
         return _fail(code, message)
 
     store.job_update(job_id, force=True, status="running", pct=0, stage="조회 준비", detail="요청을 받았습니다", elapsed=0)
+    usage.record("query", data.get("cid"))
     try:
         query = validate_request(data.get("query") or {})
         # 같은 조건으로 이미 조회한 결과가 저장돼 있으면 기상청 호출 없이 바로 반환
@@ -150,6 +155,7 @@ def jejuforecast(req: https_fn.CallableRequest) -> Dict[str, Any]:
     if not auth.verify_token(str(data.get("token", "")), APP_PASSWORD.value or ""):
         raise _fail(https_fn.FunctionsErrorCode.UNAUTHENTICATED, "로그인이 만료되었습니다. 다시 로그인해 주세요.")
     api_key = (KMA_API_KEY.value or "").strip()
+    usage.record("forecast", data.get("cid"))
     saved = None if data.get("refresh") else store.forecast_get()
     if saved:
         return saved
@@ -182,6 +188,7 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
         query = validate_request(data.get("query") or {})
     except InputError as exc:
         raise _fail(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, str(exc))
+    usage.record("brief", data.get("cid"))
     rkey = store.result_key(query)
     akey = f"{rkey}_ai{ai.PROMPT_VERSION}_{ai.MODEL}"
     final = store.is_finalized(query["end"].strftime("%Y%m%d"))
@@ -210,3 +217,86 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
            "period": f"{query['start']:%Y-%m-%d} ~ {query['end']:%Y-%m-%d}"}
     store.ai_put(akey, out, final=final)
     return out
+
+
+# ---------------------------------------------------------------------------
+# 관리자 화면 (v7.2) — 관리자 비밀번호(ADMIN_PASSWORD)로만 접근
+# ---------------------------------------------------------------------------
+def _admin_secret() -> str:
+    pw = (ADMIN_PASSWORD.value or "").strip()
+    return f"admin:{pw}" if pw else ""
+
+
+@https_fn.on_call(secrets=[ADMIN_PASSWORD], invoker="public", memory=options.MemoryOption.MB_256, timeout_sec=30)
+def managelogin(req: https_fn.CallableRequest) -> Dict[str, Any]:
+    data = req.data or {}
+    expected = (ADMIN_PASSWORD.value or "").strip()
+    if not expected or not auth.check_password(str(data.get("password", "")), expected):
+        time.sleep(1.5)
+        raise _fail(https_fn.FunctionsErrorCode.UNAUTHENTICATED, "관리자 비밀번호가 올바르지 않습니다.")
+    token, exp = auth.issue_token(_admin_secret())
+    return {"token": token, "expiresAt": exp}
+
+
+@https_fn.on_call(secrets=[ADMIN_PASSWORD, KMA_API_KEY], invoker="public", memory=options.MemoryOption.MB_512, cpu=1,
+                  timeout_sec=120)
+def jejumanage(req: https_fn.CallableRequest) -> Dict[str, Any]:
+    data = req.data or {}
+    if not auth.verify_token(str(data.get("token", "")), _admin_secret()):
+        raise _fail(https_fn.FunctionsErrorCode.UNAUTHENTICATED, "관리자 로그인이 필요합니다.")
+    action = str(data.get("action") or "")
+    api_key = (KMA_API_KEY.value or "").strip()
+    if action == "stats":
+        days = max(1, min(int(data.get("days") or 30), 90))
+        out = usage.stats(days)
+        out["cache"] = usage.cache_counts()
+        out["cacheNames"] = {k: v[1] for k, v in usage.CACHE_KINDS.items()}
+        return out
+    if action == "clear":
+        try:
+            n = usage.clear_cache(str(data.get("kind") or ""))
+        except ValueError as exc:
+            raise _fail(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, str(exc))
+        log.info("관리자: 저장분 비움 %s (%d건)", data.get("kind"), n)
+        return {"deleted": n}
+    if action == "health":
+        return {"checks": _health(api_key)}
+    raise _fail(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "알 수 없는 요청입니다.")
+
+
+def _health(api_key: str) -> list:
+    """기상청 일자료·예보, 제미나이 연결 점검 (각각 짧은 요청 1번)"""
+    import datetime as _dt
+    from weather import kma_api
+    results = []
+
+    def run(name: str, fn) -> None:
+        t0 = time.time()
+        try:
+            detail = fn()
+            results.append({"name": name, "ok": True, "detail": _redact(detail, api_key), "sec": round(time.time() - t0, 1)})
+        except Exception as exc:
+            results.append({"name": name, "ok": False, "detail": _redact(f"{exc.__class__.__name__}: {exc}", api_key)[:200],
+                            "sec": round(time.time() - t0, 1)})
+
+    def kma_daily() -> str:   # 저장분을 거치지 않고 기상청에 직접 요청
+        ymd = (_dt.date.today() - _dt.timedelta(days=2)).strftime("%Y%m%d")
+        text = kma_api.fetch_apihub_daily_text(184, ymd, ymd, api_key)
+        rows = [ln for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
+        if not rows:
+            raise RuntimeError("응답은 왔지만 자료 행이 없음")
+        return f"{ymd} 제주 일자료 {len(rows)}행 수신"
+
+    def kma_forecast() -> str:
+        now = _dt.datetime.now(fc.KST)
+        bd, bt = fc.vilage_base(now)
+        res = fc._get(fc.VILAGE_URL, {"pageNo": 1, "numOfRows": 10, "base_date": bd, "base_time": bt, "nx": 53, "ny": 38}, api_key)
+        return f"단기예보 {bd} {bt} 발표분 {res.get('total', 0)}개 항목"
+
+    def gemini() -> str:
+        return f"{ai.MODEL} 응답: {ai.ping() or '(빈 응답)'}"
+
+    run("기상청 일자료(API허브)", kma_daily)
+    run("기상청 단기예보", kma_forecast)
+    run("제미나이(Vertex AI)", gemini)
+    return results
