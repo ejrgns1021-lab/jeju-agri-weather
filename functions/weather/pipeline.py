@@ -212,12 +212,14 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     normal_raw_text = ""
     normal_yearly_df = pd.DataFrame()
     normal_daily_api: Optional[pd.DataFrame] = None   # 순별 집계용: 평년값 API 일별 평년(제주 전체)
+    normal_station_df: Optional[pd.DataFrame] = None  # AI 분석용: 평년값 API 지점별 일평년
     normal_from_years: List[str] = []                 # 순별 집계용: 30년 실측으로 평년을 계산한 지표
     if normal_mode == "api":
         report(58, "평년값(1991~2020)", "기상청 평년값 API 조회 중")
         normal_df, unmapped, normal_raw_text = normals_for_period(start, end, api_key, station_ids)
         unmapped = [n for n in unmapped if n in metric_names]   # 선택하지 않은 지표(예: 강우일수·열대야 일수)는 알림 대상에서 제외
         normal_daily_api = jeju_daily_mean(normal_df)
+        normal_station_df = normal_df
         normal_vals = aggregate_period(normal_daily_api, metric_names, extreme=False)
         normal_cnt = {n: 30 if not pd.isna(normal_vals[n]) else 0 for n in metric_names}
         normal_note = f"기상청 평년값 API ({NORMAL_START_YEAR}~{NORMAL_END_YEAR})"
@@ -280,7 +282,8 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     station_brief = None
     try:
         station_brief = build_station_brief(start, end, metric_names, extreme, current_df, fetch_period,
-                                            recent_years, station_ids)
+                                            recent_years, station_ids, normal_df=normal_station_df,
+                                            normal_years=normal_years if normal_from_years else None)
     except Exception:  # pragma: no cover - 방어용
         station_brief = None
 
