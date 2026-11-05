@@ -280,6 +280,39 @@ def test_forecast():
         fc.requests.get = orig
 
 
+# ---------------------------------------------------------------- AI 기상분석 (v7.0)
+def test_ai_digest():
+    from weather import ai
+    req = pipeline.validate_request({
+        "start": "2025-07-01", "end": "2025-08-31", "metrics": list(METRICS), "stations": list(STATIONS),
+        "source": "apihub", "normalMode": "api", "extreme": False, "rainZero": True})
+    res = pipeline.run_analysis(req, "TESTKEY")
+    dg = ai.build_digest(res)
+    assert [x["name"] for x in res["stationBrief"]["stations"]] == ["제주", "서귀포", "성산", "고산"]
+    for st in ("## 지점: 제주", "## 지점: 서귀포", "## 지점: 성산", "## 지점: 고산"):
+        assert st in dg, st
+    assert "5년" in dg and "전년" not in dg and "평년" not in dg and "2025년 7월 상순" in dg and len(dg) < 80000
+    assert ai.valid_result(res, req) and not ai.valid_result({"params": {"start": "2024-01-01"}}, req) and not ai.valid_result(None, req)
+    no_sb = dict(res, stationBrief=None)
+    assert not ai.valid_result(no_sb, req)
+    # 지점별 5년 평균은 그 지점 자료로 계산 (지점마다 값이 다름)
+    p5 = [st["period"]["누적 강수량"][1] for st in res["stationBrief"]["stations"]]
+    assert len(set(p5)) > 1, p5
+    # 연속 구간 찾기
+    d = [f"2025-07-{i:02d}" for i in range(1, 11)]
+    assert ai._spells(d, [True] * 3 + [False] + [True] * 6, 3) == [("2025-07-01", "2025-07-03", 3), ("2025-07-05", "2025-07-10", 6)]
+    assert ai._spells(d, [False] * 10, 1) == []
+
+
+def test_normals_notice_only_for_selected():
+    req = pipeline.validate_request({
+        "start": "2025-05-01", "end": "2025-05-07", "metrics": ["평균 기온", "누적 강수량"], "stations": list(STATIONS),
+        "source": "apihub", "normalMode": "api", "extreme": False, "rainZero": True})
+    res = pipeline.run_analysis(req, "TESTKEY")
+    texts = " ".join(n["text"] for n in res["notices"])
+    assert "강우일수" not in texts and "열대야" not in texts and "평년값을 산출하지 못했습니다" not in texts, texts
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

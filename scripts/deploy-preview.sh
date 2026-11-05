@@ -20,8 +20,8 @@ rm -rf "$WORK" && mkdir -p "$WORK"
 cp -r functions "$WORK/functions-dev"
 rm -rf "$WORK/functions-dev/venv" "$WORK/functions-dev/tests"
 # 함수 이름만 바꿔 라이브 함수와 분리
-sed -i -E 's/^def (login|jejuweather|jejuprogress|jejuforecast)\(/def \1dev(/' "$WORK/functions-dev/main.py"
-grep -E "^def (login|jejuweather|jejuprogress|jejuforecast)dev\(" "$WORK/functions-dev/main.py" | wc -l | grep -q 4 \
+sed -i -E 's/^def (login|jejuweather|jejuprogress|jejuforecast|jejubrief)\(/def \1dev(/' "$WORK/functions-dev/main.py"
+grep -E "^def (login|jejuweather|jejuprogress|jejuforecast|jejubrief)dev\(" "$WORK/functions-dev/main.py" | wc -l | grep -q 5 \
   || { echo "함수 이름 변경 실패" >&2; exit 1; }
 cp -r public "$WORK/public"
 
@@ -40,7 +40,8 @@ cat > "$WORK/firebase.json" <<JSON
       { "source": "/api/login", "function": { "functionId": "logindev", "region": "asia-northeast3" } },
       { "source": "/api/jejuweather", "function": { "functionId": "jejuweatherdev", "region": "asia-northeast3" } },
       { "source": "/api/jejuprogress", "function": { "functionId": "jejuprogressdev", "region": "asia-northeast3" } },
-      { "source": "/api/jejuforecast", "function": { "functionId": "jejuforecastdev", "region": "asia-northeast3" } }
+      { "source": "/api/jejuforecast", "function": { "functionId": "jejuforecastdev", "region": "asia-northeast3" } },
+      { "source": "/api/jejubrief", "function": { "functionId": "jejubriefdev", "region": "asia-northeast3" } }
     ]
   }
 }

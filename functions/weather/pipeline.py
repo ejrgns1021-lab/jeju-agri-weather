@@ -25,6 +25,7 @@ from .kma_api import (
     normals_for_period,
 )
 from .dekad import build_dekad_tables
+from .station_dekad import build_station_brief
 from .processing import (
     NORMAL_END_YEAR,
     NORMAL_START_YEAR,
@@ -215,6 +216,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     if normal_mode == "api":
         report(58, "평년값(1991~2020)", "기상청 평년값 API 조회 중")
         normal_df, unmapped, normal_raw_text = normals_for_period(start, end, api_key, station_ids)
+        unmapped = [n for n in unmapped if n in metric_names]   # 선택하지 않은 지표(예: 강우일수·열대야 일수)는 알림 대상에서 제외
         normal_daily_api = jeju_daily_mean(normal_df)
         normal_vals = aggregate_period(normal_daily_api, metric_names, extreme=False)
         normal_cnt = {n: 30 if not pd.isna(normal_vals[n]) else 0 for n in metric_names}
@@ -243,8 +245,14 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         normal_yearly_df = yearly_period_values(fetch_period, start, end, normal_years, metric_names, extreme)
         normal_vals, normal_cnt = mean_of_years(normal_yearly_df, metric_names)
         normal_note = f"과거 30년 실측 계산 ({NORMAL_START_YEAR}~{NORMAL_END_YEAR})"
-    if unmapped:
-        notices.append({"level": "warning", "text": "다음 지표는 평년값을 산출하지 못했습니다: " + ", ".join(unmapped) +
+    unmapped = [n for n in unmapped if n in metric_names]
+    derived_missing = [n for n in unmapped if METRICS[n].get("derived_from")]
+    api_missing = [n for n in unmapped if not METRICS[n].get("derived_from")]
+    if derived_missing:   # 평년값 API 에는 원래 없는 지표 — 30년 실측 보완도 실패한 경우만 알림
+        notices.append({"level": "warning", "text": "평년값 API에 없는 지표(" + ", ".join(derived_missing) +
+                        ")는 30년 실측 자료를 받지 못해 평년 비교를 비워 두었습니다. 잠시 후 다시 조회하면 채워질 수 있습니다."})
+    if api_missing:
+        notices.append({"level": "warning", "text": "다음 지표는 평년값을 산출하지 못했습니다: " + ", ".join(api_missing) +
                         " — '진단' 탭의 인식 컬럼 목록을 확인해 주세요."})
 
     # 지표 값이 비어 있는지 점검
@@ -267,6 +275,14 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
                                    normal_mode, normal_daily_api, normal_years, normal_from_years)
     except Exception as exc:  # pragma: no cover - 방어용
         notices.append({"level": "info", "text": f"순별 집계를 만들지 못했습니다: {exc}"})
+
+    # 지점별 해당 연도 vs 최근 5년 (AI 기상분석용, v7.1) — 이미 받아 둔 자료 재사용, 실패해도 다른 결과에 영향 없음
+    station_brief = None
+    try:
+        station_brief = build_station_brief(start, end, metric_names, extreme, current_df, fetch_period,
+                                            recent_years, station_ids)
+    except Exception:  # pragma: no cover - 방어용
+        station_brief = None
 
     daily_raw_text = ""
     if diag_future is not None:
@@ -334,6 +350,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         "normal30": yearly_table(normal_yearly_df, metric_names),
         "raw": table_json(format_report(raw_df, decimals=1, int_cols=["지점번호"])),
         "dekad": dekad,
+        "stationBrief": station_brief,
         "diagnostics": {
             "dailyRawText": daily_raw_text[:6000],
             "dailyColumns": detected_columns(daily_raw_text, DEFAULT_DAILY_COLS) if daily_raw_text else [],
