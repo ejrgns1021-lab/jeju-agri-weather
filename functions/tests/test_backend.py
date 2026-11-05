@@ -298,6 +298,15 @@ def test_ai_digest():
     assert ai._spells(d, [False] * 10, 1) == []
 
 
+def test_normals_notice_only_for_selected():
+    req = pipeline.validate_request({
+        "start": "2025-05-01", "end": "2025-05-07", "metrics": ["평균 기온", "누적 강수량"], "stations": list(STATIONS),
+        "source": "apihub", "normalMode": "api", "extreme": False, "rainZero": True})
+    res = pipeline.run_analysis(req, "TESTKEY")
+    texts = " ".join(n["text"] for n in res["notices"])
+    assert "강우일수" not in texts and "열대야" not in texts and "평년값을 산출하지 못했습니다" not in texts, texts
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
