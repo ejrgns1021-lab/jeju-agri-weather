@@ -146,6 +146,16 @@ def detect_events(daily: Dict[str, Any]) -> List[str]:
     return ev
 
 
+def valid_result(res: Any, query: Dict[str, Any]) -> bool:
+    """화면이 보낸 결과가 이 조회 조건의 것인지 간단히 확인"""
+    try:
+        p = res["params"]
+        return (isinstance(res.get("daily"), dict) and isinstance(res.get("comparison"), dict)
+                and p["start"] == query["start"].isoformat() and p["end"] == query["end"].isoformat())
+    except (KeyError, TypeError, AttributeError):
+        return False
+
+
 def build_digest(result: Dict[str, Any]) -> str:
     """제미나이에게 줄 분석 자료(텍스트). 수치는 조회 결과 그대로"""
     s = result.get("summary") or {}
@@ -218,7 +228,8 @@ def generate(digest: str) -> str:
     except ImportError as exc:      # pragma: no cover
         raise AiError("AI 분석 모듈이 설치되지 않았습니다.") from exc
     try:
-        client = genai.Client(enterprise=True, project=_project_id(), location=LOCATION)
+        client = genai.Client(enterprise=True, project=_project_id(), location=LOCATION,
+                              http_options=types.HttpOptions(timeout=90_000))     # 90초 안에 답이 없으면 실패 처리
         resp = client.models.generate_content(
             model=MODEL,
             contents=f"다음 분석 자료로 기상 분석 보고를 작성해 주세요.\n\n{digest}",
@@ -228,6 +239,8 @@ def generate(digest: str) -> str:
         msg = str(exc)
         if "PERMISSION_DENIED" in msg or "403" in msg:
             raise AiError("Vertex AI 사용 권한이 없습니다. (프로젝트에서 Vertex AI API 사용 설정 필요)") from exc
+        if "timed out" in msg.lower() or "timeout" in msg.lower() or "DEADLINE" in msg:
+            raise AiError("AI 응답이 늦어지고 있습니다. 잠시 후 다시 시도해 주세요.") from exc
         if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
             raise AiError("AI 사용량이 많아 잠시 후 다시 시도해 주세요.") from exc
         raise AiError(f"AI 분석 요청 실패 ({exc.__class__.__name__})") from exc

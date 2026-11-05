@@ -190,10 +190,15 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
         if saved:
             saved["cached"] = True
             return saved
+    t0 = time.time()
     try:
-        result = store.result_get(rkey) or run_analysis(query, api_key)   # 방금 조회한 결과는 저장돼 있어 바로 사용
+        # 화면이 보낸 조회 결과(표)를 우선 사용 → 기상청에 다시 묻지 않음. 없으면 저장분, 그래도 없으면 다시 계산
+        sent = data.get("result")
+        result = sent if ai.valid_result(sent, query) else (store.result_get(rkey) or run_analysis(query, api_key))
         digest = ai.build_digest(result)
+        log.info("AI 분석 자료 준비 %.1f초 (%d자, 화면 전달=%s)", time.time() - t0, len(digest), result is sent)
         text = ai.generate(digest)
+        log.info("AI 분석 완료 %.1f초 (%d자)", time.time() - t0, len(text))
     except ai.AiError as exc:
         raise _fail(https_fn.FunctionsErrorCode.FAILED_PRECONDITION, str(exc))
     except (WeatherApiError, WeatherApiTimeoutError) as exc:

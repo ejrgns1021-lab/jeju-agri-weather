@@ -558,7 +558,7 @@ function loadExtras() {
   }).catch(() => { /* 예보 파일을 못 불러와도 나머지는 정상 */ });
   import("./brief.js").then((m) => {
     extras.brief = m;
-    m.setupAi(token, () => (state.result && state.result.ok ? state.result.params : null));
+    m.setupAi(token, () => (state.result && state.result.ok ? state.result : null));
     if (state.result && state.result.ok) m.resetAi(true);
   }).catch(() => { /* AI 분석 파일을 못 불러와도 나머지는 정상 */ });
 }

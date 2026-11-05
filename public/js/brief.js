@@ -36,8 +36,21 @@ function setButton(state) {
   $("ai-btn-label").textContent = state === "busy" ? "AI가 분석 중…" : "AI 기상분석";
 }
 
-async function run(getToken, getParams, refresh = false) {
-  const params = getParams();
+/** AI에 필요한 표만 골라 보냄 (서버가 기상청에 다시 묻지 않도록) */
+function pickResult(res) {
+  const byMetric = {};
+  Object.entries((res.dekad && res.dekad.byMetric) || {}).forEach(([k, v]) => { byMetric[k] = { all: v.all }; });
+  return {
+    params: res.params, summary: res.summary,
+    comparison: { all: res.comparison && res.comparison.all },
+    station: res.station, daily: res.daily,
+    dekad: { byMetric, partial: res.dekad && res.dekad.partial },
+  };
+}
+
+async function run(getToken, getResult, refresh = false) {
+  const res0 = getResult();
+  const params = res0 && res0.params;
   if (!params || busy) return;
   busy = true;
   setButton("busy");
@@ -48,7 +61,7 @@ async function run(getToken, getParams, refresh = false) {
   $("ai-meta").textContent = "";
   card.scrollIntoView({ behavior: "smooth", block: "start" });
   try {
-    const res = await callFunction("jejubrief", { token: getToken(), query: params, refresh });
+    const res = await callFunction("jejubrief", { token: getToken(), query: params, result: pickResult(res0), refresh });
     current = { params, text: res.text };
     $("ai-body").innerHTML = mdToHtml(res.text);
     $("ai-meta").textContent = `${res.period} · ${res.cached ? "저장된 분석" : "새 분석"} ${res.createdAt} · ${res.model} (Vertex AI)`
@@ -69,9 +82,9 @@ export function resetAi(hasResult) {
   current = null;
 }
 
-export function setupAi(getToken, getParams) {
-  $("ai-btn").addEventListener("click", () => run(getToken, getParams, false));
-  $("ai-refresh").addEventListener("click", () => run(getToken, getParams, true));
+export function setupAi(getToken, getResult) {
+  $("ai-btn").addEventListener("click", () => run(getToken, getResult, false));
+  $("ai-refresh").addEventListener("click", () => run(getToken, getResult, true));
   $("ai-copy").addEventListener("click", async () => {
     if (!current) return;
     const plain = current.text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^#{1,4}\s+/gm, "■ ");
