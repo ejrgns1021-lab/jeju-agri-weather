@@ -81,7 +81,9 @@ function render(res) {
   $("fc-short").innerHTML = short ? shortTable(short) : `<p class="muted small">${esc(res.errors?.short || "단기예보 없음")}</p>`;
   $("fc-mid").innerHTML = res.mid ? midTable(res.mid) : `<p class="muted small">${esc(res.errors?.mid || "중기예보 없음")}</p>`;
   const bases = [short && `단기 ${short.base} 발표`, res.mid && `중기 ${res.mid.base} 발표`].filter(Boolean).join(" · ");
-  $("fc-base").textContent = bases ? `기상청 ${bases}` : "";
+  const stale = res.stale && Object.keys(res.stale).length
+    ? ` · 기상청 연결이 지연되어 ${Object.values(res.stale)[0]}에 받은 예보를 표시 중` : "";
+  $("fc-base").textContent = (bases ? `기상청 ${bases}` : "") + stale;
   card.hidden = false;
 }
 
