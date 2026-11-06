@@ -192,7 +192,8 @@ def _calc_ratio(num: float, den: float, allow: bool, decimals: int = 1) -> float
 def build_comparison_table(current: Dict[str, float], recent: Dict[str, float], normal: Dict[str, float],
                            metric_names: List[str], current_year: int, extreme: bool = False,
                            decimals: int = 1,
-                           prev: Optional[Dict[str, float]] = None) -> pd.DataFrame:
+                           prev: Optional[Dict[str, float]] = None,
+                           recent3: Optional[Dict[str, float]] = None) -> pd.DataFrame:
     """
     보고서용 비교표 (수치형).
     열:
@@ -202,6 +203,7 @@ def build_comparison_table(current: Dict[str, float], recent: Dict[str, float], 
     - 표에 출력되는 숫자(소수 decimals 자리 반올림값)를 기준으로 편차(대비)와 비율(%)을 산출하여,
       보고서 표의 숫자를 그대로 검산했을 때 오차가 발생하지 않도록 한다.
     - 평균 기온, 최고 기온, 최저 기온, 누적 강수량, 일조 시간 모두 대비(비율)을 산출한다.
+    - recent3 를 주면 '최근 3년 평균 / 최근 3년 대비 / 최근3년평균대비(비율)' 열을 추가한다 (v7.3, 계산 방식은 5년과 동일).
     """
     prev_dict = prev or {}
     rows: List[Dict[str, Any]] = []
@@ -224,7 +226,7 @@ def build_comparison_table(current: Dict[str, float], recent: Dict[str, float], 
         r_rec = _calc_ratio(cur, rec, allow_ratio, decimals)
         r_nor = _calc_ratio(cur, nor, allow_ratio, decimals)
 
-        rows.append({
+        row = {
             "구분": label,
             "해당 연도": cur,
             "전년": prv,
@@ -236,7 +238,13 @@ def build_comparison_table(current: Dict[str, float], recent: Dict[str, float], 
             "전년도 대비(비율)": r_prv,
             "최근5년평균대비(비율)": r_rec,
             "평년대비(비율)": r_nor,
-        })
+        }
+        if recent3 is not None:
+            r3 = _round_val(recent3.get(name, float("nan")), decimals)
+            row["최근 3년 평균"] = r3
+            row["최근 3년 대비"] = round(cur - r3, decimals) if not (pd.isna(cur) or pd.isna(r3)) else float("nan")
+            row["최근3년평균대비(비율)"] = _calc_ratio(cur, r3, allow_ratio, decimals)
+        rows.append(row)
     df = pd.DataFrame(rows)
     df.attrs["current_year"] = current_year
     df.attrs["prev_year"] = current_year - 1
@@ -265,29 +273,27 @@ def format_comparison_for_display(comparison: pd.DataFrame, current_year: int,
             work[col] = float("nan")
 
     work = work.rename(columns={"해당 연도": year_label, "전년": prev_label})
-    formatted = format_report(work, decimals=decimals, signed_cols=["전년 대비", "최근 5년 대비", "평년 대비"])
-    base_cols = ["구분", year_label, prev_label, "최근 5년 평균", "평년 평균"]
+    has3 = "최근 3년 평균" in work.columns
+    # 기준별 (기준값 열, 편차 열, 비율 열) — 최근 3년은 값이 있을 때만 (v7.3)
+    bases = [(prev_label, "전년 대비", "전년도 대비(비율)")]
+    if has3:
+        bases.append(("최근 3년 평균", "최근 3년 대비", "최근3년평균대비(비율)"))
+    bases += [("최근 5년 평균", "최근 5년 대비", "최근5년평균대비(비율)"), ("평년 평균", "평년 대비", "평년대비(비율)")]
+    formatted = format_report(work, decimals=decimals, signed_cols=[b[1] for b in bases])
+    base_cols = ["구분", year_label] + [b[0] for b in bases]
 
     if layout_mode == "grouped":
-        cols = base_cols + [
-            "전년 대비", "전년도 대비(비율)",
-            "최근 5년 대비", "최근5년평균대비(비율)",
-            "평년 대비", "평년대비(비율)",
-        ]
+        cols = list(base_cols)
+        for _, d, r in bases:
+            cols += [d, r]
         return formatted[cols]
 
     if layout_mode == "ratio_only":
-        cols = base_cols + ["전년도 대비(비율)", "최근5년평균대비(비율)", "평년대비(비율)"]
-        return formatted[cols]
+        return formatted[base_cols + [b[2] for b in bases]]
 
     if layout_mode == "combined":
         out = formatted[base_cols].copy()
-        pairs = [
-            ("전년 대비", "전년도 대비(비율)", "전년도 대비(비율)"),
-            ("최근 5년 대비", "최근5년평균대비(비율)", "최근5년평균대비(비율)"),
-            ("평년 대비", "평년대비(비율)", "평년대비(비율)"),
-        ]
-        for diff_col, ratio_col, target_col in pairs:
+        for _, diff_col, ratio_col in bases:
             combined_vals: List[str] = []
             for d_str, r_str in zip(formatted[diff_col].tolist(), formatted[ratio_col].tolist()):
                 if d_str == "-" and r_str == "-":
@@ -298,15 +304,11 @@ def format_comparison_for_display(comparison: pd.DataFrame, current_year: int,
                     combined_vals.append(f"{r_str}%")
                 else:
                     combined_vals.append(f"{d_str} ({r_str}%)")
-            out[target_col] = combined_vals
+            out[ratio_col] = combined_vals
         return out
 
     # 기본값 ("all")
-    cols = base_cols + [
-        "전년 대비", "최근 5년 대비", "평년 대비",
-        "전년도 대비(비율)", "최근5년평균대비(비율)", "평년대비(비율)",
-    ]
-    return formatted[cols]
+    return formatted[base_cols + [b[1] for b in bases] + [b[2] for b in bases]]
 
 
 def build_station_table(station_df: pd.DataFrame, metric_names: List[str], extreme: bool = False,

@@ -33,7 +33,7 @@ NORMALS_COLLECTION = "kma_normals"
 FINALIZED_AFTER_DAYS = 3           # 기상청 일자료는 최근 며칠간 수정될 수 있으므로 이보다 지난 구간은 '확정'(영구 저장)
 RECENT_TTL_SEC = 6 * 3600          # 확정 전 최근 자료·결과는 6시간 동안만 재사용
 RESULTS_COLLECTION = "results"
-RESULT_SCHEMA = 4                  # v7.1: 지점별 비교(stationBrief, 강수량 평년 포함) 추가 → 이전 형식 저장분과 구분
+RESULT_SCHEMA = 6                  # v7.3: 최근 3년·지점별 보고서 표(stationReport) 추가 → 이전 형식 저장분과 구분
 KST = dt.timezone(dt.timedelta(hours=9))
 
 _client: Any = None

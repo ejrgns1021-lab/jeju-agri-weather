@@ -32,11 +32,12 @@
     <details class="changelog">
       <summary>
         <span class="cl-title"><i data-icon="history"></i> 업데이트 내역</span>
-        <span class="cl-now">현재 v7.1</span>
+        <span class="cl-now">현재 v7.3</span>
         <i data-icon="chevron-down" class="cl-chev"></i>
       </summary>
       <ol class="cl-list">
-        <li class="cl-new"><b>v7.1</b><span>AI 기상분석: 기온은 최근 5년과만, 강수량은 최근 5년·평년 모두와 비교해 적정 범위면 문제없음으로 정리</span></li>
+        <li class="cl-new"><b>v7.3</b><span><strong>보고서 표</strong> 탭(지점별 본년·비교 기준, 한글 복사), <strong>비교 기준 선택</strong>(전년·최근 3년·최근 5년·평년 중 고른 것만 표시)</span></li>
+        <li><b>v7.1</b><span>AI 기상분석: 기온은 최근 5년과만, 강수량은 최근 5년·평년 모두와 비교해 적정 범위면 문제없음으로 정리</span></li>
         <li><b>v7.0.2</b><span>대시보드 제목을 "핵심 기상 지표(평균)"으로 변경</span></li>
         <li><b>v7.0</b><span><strong>AI 기상분석</strong>: 조회한 기간을 지점별(제주·서귀포·성산·고산)로 최근 5년과 비교해 가뭄·고온·열대야 등 특이 기상 요인을 발생 기간 중심으로 AI가 정리하고 종합 (버튼을 누를 때만)</span></li>
         <li><b>v6.9.2</b><span>사이트 이름을 <strong>제주 기상계산기</strong>로 변경</span></li>
@@ -198,6 +199,8 @@
         </section>
 
         <section id="results" class="results" hidden>
+          <!-- 비교 기준 선택 (v7.3): 고른 기준만 카드·표·엑셀에 표시, 다시 조회 불필요 -->
+          <div id="base-chips" class="base-chips" role="group" aria-label="비교 기준"></div>
           <div class="results-bar">
             <div id="summary" class="summary"></div>
             <button id="excel-all" type="button" class="btn ghost small excel-all"><i data-icon="file-spreadsheet"></i><span>전체 결과 엑셀 저장</span></button>
@@ -229,7 +232,7 @@
             <div class="dekad-head">
               <div class="card-head">
                 <h3><i data-icon="calendar-range"></i> 순별(상·중·하순) 집계 <span class="pill" id="dekad-count"></span></h3>
-                <p class="muted small">상순 1~10일 · 중순 11~20일 · 하순 21일~말일, 순마다 전년·최근 5년·평년과 비교</p>
+                <p class="muted small">상순 1~10일 · 중순 11~20일 · 하순 21일~말일, 순마다 고른 비교 기준과 비교</p>
               </div>
               <label class="switch big"><input id="dekad-toggle" type="checkbox"><span class="switch-ui"></span><span>순별 데이터 집계 보기</span></label>
             </div>
@@ -248,12 +251,14 @@
 
           <section class="card">
             <div class="tabs" role="tablist">
-              <button type="button" class="tab active" data-tab="station"><i data-icon="map-pin" class="ic-sm"></i>지점별</button>
+              <button type="button" class="tab active" data-tab="sheet"><i data-icon="file-text" class="ic-sm"></i>보고서 표</button>
+              <button type="button" class="tab" data-tab="station"><i data-icon="map-pin" class="ic-sm"></i>지점별</button>
               <button type="button" class="tab" data-tab="daily"><i data-icon="calendar" class="ic-sm"></i>일별</button>
               <button type="button" class="tab" data-tab="yearly"><i data-icon="history" class="ic-sm"></i>연도별 동기간</button>
               <button type="button" class="tab" data-tab="diag"><i data-icon="file-text" class="ic-sm"></i>진단</button>
             </div>
-            <div class="tab-panel" data-panel="station"><div id="station-table"></div></div>
+            <div class="tab-panel" data-panel="sheet"><div id="report-panel" class="report-panel"></div></div>
+            <div class="tab-panel" data-panel="station" hidden><div id="station-table"></div></div>
             <div class="tab-panel" data-panel="daily" hidden>
               <label class="field inline"><span>지표</span><select id="daily-metric"></select></label>
               <div id="daily-table"></div>

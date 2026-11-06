@@ -4,6 +4,7 @@ import { analyze, login, ApiError } from "./api.js";
 import { buildTable, copyForHwp, copyText, downloadCsv, toTsv } from "./tables.js";
 import { icon, hydrateIcons } from "./icons.js";
 import { renderDekad, refreshDekadCompare } from "./dekad.js";
+import { filterBases, isOn, onBasesChange, renderBaseChips } from "./bases.js";
 import { saveWorkbook } from "./excel.js";
 
 const METRICS = ["평균 기온", "최고 기온", "최저 기온", "누적 강수량", "일조 시간", "강우일수", "열대야 일수"];
@@ -32,7 +33,7 @@ const MAX_DAYS = 366;
 
 const $ = (id) => document.getElementById(id);
 // 부가 기능(예보·AI 분석)은 따로 불러옴 — 브라우저 차단 기능이 파일 하나를 막아도 로그인·조회는 항상 동작
-const extras = { forecast: null, brief: null };
+const extras = { forecast: null, brief: null, sheet: null };
 const extra = (name, fn) => { try { const m = extras[name]; if (m) fn(m); } catch (e) { /* 부가 기능 오류는 무시 */ } };
 const DEFAULT_LAYOUT = "combined"; // 기본 표 구성: 한 칸에 편차 (비율%)
 const state = { result: null, layout: DEFAULT_LAYOUT };
@@ -321,7 +322,7 @@ function renderComparison() {
   const res = state.result;
   const p = res.params;
   if (!res.comparison[state.layout]) state.layout = DEFAULT_LAYOUT;
-  const tbl = res.comparison[state.layout];
+  const tbl = filterBases(res.comparison[state.layout]);
   const caption = `제주 지역 기상 현황 (${fmtDate(p.start)}~${fmtDate(p.end)})`;
   $("cmp-table").replaceChildren(tableBlock(tbl, `제주기상비교표_${compact(p.start)}_${compact(p.end)}`, caption));
   document.querySelectorAll("#layout-switch button").forEach((b) => b.classList.toggle("active", b.dataset.layout === state.layout));
@@ -352,7 +353,9 @@ function renderResult(res) {
       el("span", { class: "stat-body" },
         el("span", { class: "stat-label", text: k }), el("strong", { text: v }), el("span", { class: "stat-sub", text: sub })))),
   );
+  renderBaseChips($("base-chips"));
   renderMetricCards(res);
+  extra("sheet", (m) => m.renderReport(res, toast));
 
   $("cmp-caption").textContent = `${s.aggDesc}. 결측 지점은 제외하고 나머지 지점 평균으로 산출. ` +
     "대비(편차)=해당 연도−기준값, 대비(비율)=해당 연도÷기준값×100(%). '-' 는 자료 없음.";
@@ -412,7 +415,8 @@ function readComparisonRows(res) {
   const iPrev = idx((c) => c.startsWith("전년("));
   const cols = {
     prev: [iPrev, idx((c) => c === "전년 대비"), idx((c) => c === "전년도 대비(비율)")],
-    recent: [idx((c) => c === "최근 5년 평균"), idx((c) => c === "최근 5년 대비"), idx((c) => c === "최근5년평균대비(비율)")],
+    r3: [idx((c) => c === "최근 3년 평균"), idx((c) => c === "최근 3년 대비"), idx((c) => c === "최근3년평균대비(비율)")],
+    r5: [idx((c) => c === "최근 5년 평균"), idx((c) => c === "최근 5년 대비"), idx((c) => c === "최근5년평균대비(비율)")],
     normal: [idx((c) => c === "평년 평균"), idx((c) => c === "평년 대비"), idx((c) => c === "평년대비(비율)")],
   };
   return t.rows.map((row) => {
@@ -448,11 +452,11 @@ function gauge(ratioText) {
 function renderMetricCards(res) {
   const s = res.summary;
   // 비교 기준 이름과 기준값 설명 (예: "전년 대비" / "2025년 19.6℃")
-  const names = { prev: "전년 대비", recent: "최근 5년 대비", normal: "평년 대비" };
-  const refDesc = { prev: `${s.prevYear}년`, recent: `${s.recentRange} 평균`, normal: "1991~2020 평균" };
+  const names = { prev: "전년 대비", r3: "최근 3년 대비", r5: "최근 5년 대비", normal: "평년 대비" };
+  const refDesc = { prev: `${s.prevYear}년`, r3: `${s.recent3Range || ""} 평균`, r5: `${s.recentRange} 평균`, normal: "1991~2020 평균" };
   const cards = readComparisonRows(res).map((row) => {
     const view = METRIC_VIEW[row.base] || { icon: "bar-chart", kind: "etc", tone: "avg", primary: "diff" };
-    const compareRows = Object.entries(row.refs).map(([key, ref]) => {
+    const compareRows = Object.entries(row.refs).filter(([key, ref]) => isOn(key) && !(key === "r3" && ref.value === "-" && !s.recent3Range)).map(([key, ref]) => {
       const t = trendOf(ref.diff);
       const arrow = t === "up" ? icon("trending-up", "ic-sm") : t === "down" ? icon("trending-down", "ic-sm") : icon("minus", "ic-sm");
       const diffEl = el("span", { class: `delta trend-${t}` }, arrow,
@@ -506,7 +510,7 @@ async function exportAll() {
   const info = [`조회 기간: ${fmtDate(p.start)} ~ ${fmtDate(p.end)}`, `관측 지점: ${(p.stations || []).join(", ")}`,
     `평년 기준: ${res.summary.normalNote}`, `조회 시각: ${res.fetchedAt}`];
   const sheets = [
-    { name: "비교표", title: "제주 전체(4개 지점 평균) 기상 비교표", notes: info, table: res.comparison.all },
+    { name: "비교표", title: "제주 전체(4개 지점 평균) 기상 비교표", notes: info, table: filterBases(res.comparison.all) },
     { name: "산출 근거", table: res.basis },
     { name: "지점별 요약", table: res.station },
     ...p.metrics.filter((m) => res.daily && res.daily[m]).map((m) => ({ name: `일별_${m}`, table: res.daily[m] })),
@@ -515,8 +519,10 @@ async function exportAll() {
   ];
   if (res.dekad) {
     sheets.push({ name: "순별 요약", table: res.dekad.overview });
-    p.metrics.filter((m) => res.dekad.byMetric[m]).forEach((m) => sheets.push({ name: `순별_${m}`, table: res.dekad.byMetric[m].all }));
+    p.metrics.filter((m) => res.dekad.byMetric[m]).forEach((m) => sheets.push({ name: `순별_${m}`, table: filterBases(res.dekad.byMetric[m].all) }));
   }
+  const rep = extras.sheet && extras.sheet.reportSheet(res);
+  if (rep) sheets.unshift(rep);
   const btn = $("excel-all");
   btn.disabled = true;
   try {
@@ -550,7 +556,21 @@ function init() {
   loadExtras();
 }
 
+function onBasesChanged() {
+  const res = state.result;
+  if (!res || !res.ok) return;
+  renderMetricCards(res);
+  renderComparison();
+  try { refreshDekadCompare(); } catch (e) { /* 순별 표 없음 */ }
+  extra("sheet", (m) => m.renderReport(res, toast));
+}
+
 function loadExtras() {
+  onBasesChange(onBasesChanged);
+  import("./statsheet.js").then((m) => {
+    extras.sheet = m;
+    if (state.result && state.result.ok) m.renderReport(state.result, toast);
+  }).catch(() => { /* 보고서 표 파일을 못 불러와도 나머지는 정상 */ });
   import("./forecast.js").then((m) => {
     extras.forecast = m;
     m.setupForecast();
