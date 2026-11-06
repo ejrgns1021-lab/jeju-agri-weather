@@ -118,3 +118,58 @@ def build_station_brief(start: dt.date, end: dt.date, metric_names: List[str], e
                     "period": with_normal({n: [_r(whole_cur.get(n)), whole_5.get(n)] for n in metric_names}, start, end),
                     "dekads": dekads})
     return {"metrics": list(metric_names), "years": f"{min(recent_years)}~{max(recent_years)}", "stations": out}
+
+
+# ---------------------------------------------------------------------
+# 보고서 표 (v7.3): 지점별 본년 · 전년 · 최근 3년 · 최근 5년 · 평년
+# ---------------------------------------------------------------------
+def build_station_report(start: dt.date, end: dt.date, metric_names: List[str], extreme: bool,
+                         current_df: pd.DataFrame, fetch_period: Callable[[dt.date, dt.date], pd.DataFrame],
+                         recent_years: List[int], station_ids: List[int],
+                         normal_mode: str, normal_df: Optional[pd.DataFrame],
+                         normal_years: List[int], normal_from_years: List[str]) -> Dict[str, Any]:
+    """{"stations": [{"name", "values": {지표: {"cur","prev","r3","r5","normal"}}}]}
+    - 평년: 평년값 API 지표는 지점별 일평년(API), API에 없는 지표·실측 계산 모드는 1991~2020 지점별 실측 평균
+    - 이미 받아 둔 기간 자료를 재사용 (기상청 추가 호출 없음)"""
+    prev_year = start.year - 1
+    years3 = recent_years[:3]
+
+    def fetch(y: int) -> pd.DataFrame:
+        s_y, e_y = shift_period(start, end, y)
+        try:
+            return fetch_period(s_y, e_y)
+        except Exception:
+            return pd.DataFrame()
+
+    past = {y: fetch(y) for y in recent_years}
+    year_metrics = [n for n in metric_names if normal_mode == "compute" or n in (normal_from_years or [])]
+    nyears = {y: fetch(y) for y in normal_years} if (normal_mode != "skip" and year_metrics) else {}
+    api_metrics = [n for n in metric_names if n not in year_metrics] if normal_mode == "api" else []
+
+    def mean_years(frames: Dict[int, pd.DataFrame], sid: int, names: List[str]) -> Dict[str, Optional[float]]:
+        vals: Dict[str, List[float]] = {n: [] for n in names}
+        for y, df in frames.items():
+            agg = aggregate_period(_station_daily(df, sid), names, extreme)
+            for n in names:
+                v = agg.get(n)
+                if v is not None and not pd.isna(v):
+                    vals[n].append(float(v))
+        return {n: (_r(sum(v) / len(v)) if v else None) for n, v in vals.items()}
+
+    out = []
+    for sid in station_ids:
+        cur = aggregate_period(_station_daily(current_df, sid), metric_names, extreme)
+        prev = aggregate_period(_station_daily(past.get(prev_year, pd.DataFrame()), sid), metric_names, extreme)
+        r3 = mean_years({y: past[y] for y in years3 if y in past}, sid, metric_names)
+        r5 = mean_years(past, sid, metric_names)
+        normal: Dict[str, Optional[float]] = {n: None for n in metric_names}
+        if api_metrics and normal_df is not None and not normal_df.empty:
+            agg = aggregate_period(_station_daily(normal_df, sid), api_metrics, extreme=False)
+            normal.update({n: _r(agg.get(n)) for n in api_metrics})
+        if nyears:
+            ny = mean_years(nyears, sid, year_metrics)
+            normal.update(ny)
+        out.append({"name": STATION_NAMES.get(sid, str(sid)),
+                    "values": {n: {"cur": _r(cur.get(n)), "prev": _r(prev.get(n)), "r3": r3.get(n),
+                                   "r5": r5.get(n), "normal": normal.get(n)} for n in metric_names}})
+    return {"stations": out}

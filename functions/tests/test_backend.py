@@ -324,6 +324,25 @@ def test_normals_notice_only_for_selected():
     assert "강우일수" not in texts and "열대야" not in texts and "평년값을 산출하지 못했습니다" not in texts, texts
 
 
+def test_recent3_and_station_report():
+    req = pipeline.validate_request({
+        "start": "2025-07-01", "end": "2025-07-21", "metrics": list(METRICS), "stations": ["제주", "서귀포"],
+        "source": "apihub", "normalMode": "api", "extreme": False, "rainZero": True})
+    res = pipeline.run_analysis(req, "TESTKEY")
+    cols = res["comparison"]["all"]["columns"]
+    assert "최근 3년 평균" in cols and "최근 3년 대비" in cols and "최근3년평균대비(비율)" in cols
+    assert cols.index("전년(2024)") < cols.index("최근 3년 평균") < cols.index("최근 5년 평균") < cols.index("평년 평균")
+    assert res["summary"]["recent3Range"] == "2022~2024"
+    assert "최근 3년 평균" in res["dekad"]["byMetric"]["평균 기온"]["all"]["columns"]
+    sr = res["stationReport"]
+    assert [s["name"] for s in sr["stations"]] == ["제주", "서귀포"]
+    v = sr["stations"][0]["values"]["누적 강수량"]
+    assert all(v[k] is not None for k in ("cur", "prev", "r3", "r5", "normal")), v
+    # 선택 지점 평균은 기존 비교표 값과 같음
+    row = res["comparison"]["all"]["rows"][0]
+    assert float(row[1]) == sr["average"]["평균 기온"]["cur"] and float(row[3]) == sr["average"]["평균 기온"]["r3"]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

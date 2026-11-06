@@ -130,6 +130,7 @@ def build_dekad_tables(
             ps, pe = _year_offset_dates(s, e, start.year, prev_year)
             prev = aggregate_period(_slice(recent_daily[prev_year], ps, pe), metric_names, extreme)
         recent = mean_over(recent_daily, s, e, metric_names)
+        recent3 = mean_over({y: recent_daily[y] for y in recent_years[:3] if y in recent_daily}, s, e, metric_names)
 
         normal: Dict[str, float] = {n: float("nan") for n in metric_names}
         if normal_mode != "skip":
@@ -140,7 +141,7 @@ def build_dekad_tables(
                 normal.update(mean_over(nyears_daily, s, e, [n for n in metric_names if n in normal_from_years]))
 
         cmp = build_comparison_table(current, recent, normal, metric_names, start.year,
-                                     extreme=extreme, decimals=1, prev=prev)
+                                     extreme=extreme, decimals=1, prev=prev, recent3=recent3)
         days_txt = f"{p['days']}일" + (" (일부)" if p["partial"] else "")
         for layout in ("combined", "all"):
             f = format_comparison_for_display(cmp, start.year, layout_mode=layout, decimals=1)

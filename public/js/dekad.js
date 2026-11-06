@@ -1,6 +1,7 @@
 // dekad.js (화면) — 순별(상순·중순·하순) 집계 표시 · 엑셀 저장
 // 서버가 계산해 보낸 순별 표(res.dekad)를 보여주기만 합니다. 토글은 다시 조회하지 않고 즉시 보이기/숨기기만 합니다.
 import { saveWorkbook } from "./excel.js";
+import { filterBases, selectedBases } from "./bases.js";
 
 const TOGGLE_KEY = "jeju-weather-dekad-on";
 
@@ -53,7 +54,7 @@ export function renderDekad(res, ui) {
     const m = sel.value;
     const lay = ui.layout() === "combined" ? "combined" : "all";
     const tbl = dk.byMetric[m] && dk.byMetric[m][lay];
-    $("dekad-compare").replaceChildren(tableBlock(tbl, `순별_${m}_${tag}`, `${m} 순별 비교`));
+    $("dekad-compare").replaceChildren(tableBlock(filterBases(tbl), `순별_${m}_${tag}`, `${m} 순별 비교`));
   };
   sel.onchange = draw;
   draw();
@@ -74,7 +75,7 @@ export function renderDekad(res, ui) {
       ];
       await saveWorkbook([
         { name: "순별 요약", title: "순별 기상 요약 (해당 연도)", notes: info, table: dk.overview },
-        ...metrics.map((m) => ({ name: m, title: `${m} 순별 비교 (전년·최근 5년·평년)`, notes: info.slice(0, 3), table: dk.byMetric[m].all })),
+        ...metrics.map((m) => ({ name: m, title: `${m} 순별 비교 (${selectedBases().map((b) => b.label).join("·")})`, notes: info.slice(0, 3), table: filterBases(dk.byMetric[m].all) })),
       ], `제주_순별기상_${tag}.xlsx`);
       toast("순별 엑셀 파일을 저장했습니다.");
     } catch (e) {

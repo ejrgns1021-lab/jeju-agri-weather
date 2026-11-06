@@ -635,3 +635,26 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
 @keyframes ai-blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
 @media (max-width: 600px) { .ai-btn { width: 100%; justify-content: center; } }
 @media (prefers-color-scheme: dark) { .ai-body h4 { border-left-color: #9da1f0; } .ai-head h3 .ic { color: #9da1f0; } }
+
+/* ---------------------------------------------------------------- 비교 기준 칩 · 보고서 표 (v7.3) */
+.base-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.base-label { font-size: 13px; font-weight: 700; color: var(--ink-2); margin-right: 4px; }
+.base-chip { border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); font: inherit; font-size: 13px;
+  font-weight: 600; padding: 6px 12px; border-radius: 999px; cursor: pointer; min-height: 34px; }
+.base-chip::before { content: "○ "; }
+.base-chip.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.base-chip.on::before { content: "✓ "; }
+.report-panel { display: grid; gap: 10px; }
+.rep-opts { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.rep-opts .field.inline { display: flex; align-items: center; gap: 6px; }
+.rep-opts .field.inline span { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.rep-opts input[type="text"] { min-width: 0; width: 240px; max-width: 100%; font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); }
+.rep-title-f input[type="text"] { width: 300px; }
+.rep-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rep-head strong { font-size: 16px; }
+.rep-table th, .rep-table td { text-align: center; }
+.rep-table tbody th { background: var(--surface-2); white-space: nowrap; }
+.rep-table thead tr:first-child th { background: var(--brand-soft); }
+.rep-table td.rep-cur { font-weight: 700; }
+.rep-tools { align-items: center; }
+@media (max-width: 600px) { .rep-opts input[type="text"], .rep-title-f input[type="text"] { width: 100%; } .rep-opts .field.inline { width: 100%; } }

@@ -25,7 +25,7 @@ from .kma_api import (
     normals_for_period,
 )
 from .dekad import build_dekad_tables
-from .station_dekad import build_station_brief
+from .station_dekad import build_station_brief, build_station_report
 from .processing import (
     NORMAL_END_YEAR,
     NORMAL_START_YEAR,
@@ -113,6 +113,14 @@ def validate_request(data: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------
 # 표 → JSON
 # ---------------------------------------------------------------------
+def _round1(v: Any) -> Optional[float]:
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if pd.isna(x) else round(x, 1)
+
+
 def table_json(df: Optional[pd.DataFrame]) -> Optional[Dict[str, Any]]:
     if df is None or df.empty:
         return None
@@ -202,6 +210,9 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     prev_year = start.year - 1
     prev_vals, prev_days = extract_year_values(recent_df, prev_year, metric_names)
     recent_vals, recent_cnt = mean_of_years(recent_df, metric_names)
+    recent3_years = recent_years[:3]   # 최근 3년 (v7.3) — 이미 받은 최근 5년 자료 중 가까운 3개 연도
+    recent3_vals, _ = mean_of_years(recent_df[recent_df["연도"].isin(recent3_years)] if not recent_df.empty else recent_df,
+                                    metric_names)
 
     # 3) 평년
     normal_years = list(range(NORMAL_START_YEAR, NORMAL_END_YEAR + 1))
@@ -287,6 +298,19 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     except Exception:  # pragma: no cover - 방어용
         station_brief = None
 
+    # 보고서 표용 지점별 본년·전년·최근 3년·최근 5년·평년 (v7.3) — 실패해도 다른 결과에 영향 없음
+    station_report = None
+    try:
+        station_report = build_station_report(start, end, metric_names, extreme, current_df, fetch_period, recent_years,
+                                              station_ids, normal_mode, normal_station_df, normal_years, normal_from_years)
+        # 선택 지점 평균(기존 비교표와 같은 값)도 함께
+        station_report["average"] = {n: {"cur": _round1(current_vals.get(n)), "prev": _round1(prev_vals.get(n)),
+                                         "r3": _round1(recent3_vals.get(n)), "r5": _round1(recent_vals.get(n)),
+                                         "normal": _round1(normal_vals.get(n))} for n in metric_names}
+        station_report["units"] = {n: METRICS[n]["unit"] for n in metric_names}
+    except Exception:  # pragma: no cover - 방어용
+        station_report = None
+
     daily_raw_text = ""
     if diag_future is not None:
         try:
@@ -294,7 +318,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         except Exception:   # 시간 초과·기상청 오류 시 진단 원문만 생략
             daily_raw_text = ""
     comparison = build_comparison_table(current_vals, recent_vals, normal_vals, metric_names, start.year,
-                                        extreme=extreme, decimals=1, prev=prev_vals)
+                                        extreme=extreme, decimals=1, prev=prev_vals, recent3=recent3_vals)
     comparison_layouts = {key: table_json(format_comparison_for_display(comparison, start.year, layout_mode=key, decimals=1))
                           for key in LAYOUTS}
 
@@ -338,6 +362,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
             "currentYear": start.year,
             "prevYear": prev_year,
             "recentRange": f"{min(recent_years)}~{max(recent_years)}",
+            "recent3Range": f"{min(recent3_years)}~{max(recent3_years)}",
             "normalNote": normal_note,
             "normalIncluded": bool(normal_cnt) and max(normal_cnt.values()) > 0,
             "aggDesc": "기온은 기간 평균, 누적 강수량·일조 시간은 기간 합산, 강우일수는 일강수량 0.1mm 이상인 날 수, "
@@ -354,6 +379,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         "raw": table_json(format_report(raw_df, decimals=1, int_cols=["지점번호"])),
         "dekad": dekad,
         "stationBrief": station_brief,
+        "stationReport": station_report,
         "diagnostics": {
             "dailyRawText": daily_raw_text[:6000],
             "dailyColumns": detected_columns(daily_raw_text, DEFAULT_DAILY_COLS) if daily_raw_text else [],
