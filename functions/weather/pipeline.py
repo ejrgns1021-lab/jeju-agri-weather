@@ -302,7 +302,8 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     station_report = None
     try:
         station_report = build_station_report(start, end, metric_names, extreme, current_df, fetch_period, recent_years,
-                                              station_ids, normal_mode, normal_station_df, normal_years, normal_from_years)
+                                              station_ids, normal_mode, normal_station_df, normal_years, normal_from_years,
+                                              prefetch_years=lambda ys: prefetch(ys, 96, 98, "평년 보완: 지점별 평년값이 없는 항목(1991~2020 실측)"))
         # 선택 지점 평균(기존 비교표와 같은 값)도 함께
         station_report["average"] = {n: {"cur": _round1(current_vals.get(n)), "prev": _round1(prev_vals.get(n)),
                                          "r3": _round1(recent3_vals.get(n)), "r5": _round1(recent_vals.get(n)),

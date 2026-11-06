@@ -71,9 +71,11 @@ async function copyHwp(res, toast) {
   const model = buildModel(res);
   const title = $("rep-title").value;
   const src = $("rep-src").value;
-  const html = `<p style="${HWP.title}">${esc(title)}</p>${src ? `<p style="${HWP.src}">${esc(src)}</p>` : ""}${tableHtml(model, true)}`;
+  const note = filledNote(res);
+  const html = `<p style="${HWP.title}">${esc(title)}</p>${src ? `<p style="${HWP.src}">${esc(src)}</p>` : ""}${tableHtml(model, true)}`
+    + (note ? `<p style="${HWP.src.replace("text-align:right", "text-align:left")}">${esc(note)}</p>` : "");
   const t = flat(model);
-  const text = [title, src, ...[t.columns, ...t.rows].map((r) => r.join("\t"))].filter(Boolean).join("\n");
+  const text = [title, src, ...[t.columns, ...t.rows].map((r) => r.join("\t")), note].filter(Boolean).join("\n");
   try {
     await navigator.clipboard.write([new ClipboardItem({
       "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
@@ -81,6 +83,13 @@ async function copyHwp(res, toast) {
   } catch (e) {
     toast((await copyText(text)) ? "표를 텍스트로 복사했습니다." : "복사하지 못했습니다.");
   }
+}
+
+/** 기상청 평년값이 없어 30년 실측으로 채운 칸 안내 (예: 성산·고산 일조시간) */
+function filledNote(res) {
+  const f = (res.stationReport && res.stationReport.normalFilled) || [];
+  if (!f.length || !selectedBases().some((b) => b.key === "normal")) return "";
+  return `※ ${f.join(", ")} 평년값은 기상청 평년값 미제공으로 1991~2020년 실측 평균을 사용`;
 }
 
 export function renderReport(res, toast) {
@@ -103,6 +112,7 @@ export function renderReport(res, toast) {
     </div>
     <div class="rep-head"><strong id="rep-title-view"></strong><span id="rep-src-view" class="muted small"></span></div>
     <div class="table-scroll">${tableHtml(model, false)}</div>
+    ${filledNote(res) ? `<p class="muted small rep-note">${esc(filledNote(res))}</p>` : ""}
     <div class="table-tools rep-tools">
       <button type="button" class="btn small" id="rep-copy">한글용 표 복사</button>
       <button type="button" class="btn small ghost" id="rep-excel">엑셀 저장</button>

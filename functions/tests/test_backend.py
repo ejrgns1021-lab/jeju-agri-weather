@@ -343,6 +343,23 @@ def test_recent3_and_station_report():
     assert float(row[1]) == sr["average"]["평균 기온"]["cur"] and float(row[3]) == sr["average"]["평균 기온"]["r3"]
 
 
+def test_station_report_fills_missing_normals():
+    """평년값 API 에 특정 지점 값이 없으면 그 칸만 30년 실측 평균으로 채움"""
+    import datetime as _dt
+    from weather.station_dekad import build_station_report
+    s, e = _dt.date(2025, 7, 1), _dt.date(2025, 7, 10)
+    fetch = lambda a, b: kma_api.fetch_all_stations(a, b, "K", "apihub", [184, 188], True)[0]
+    cur = fetch(s, e)
+    ndf, _, _ = kma_api.normals_for_period(s, e, "K", [184, 188])
+    ndf.loc[ndf["stn_id"] == 188, "sumSsHr"] = float("nan")       # 성산 일조 평년 없음
+    years = list(range(1991, 2021))
+    rep = build_station_report(s, e, ["일조 시간", "평균 기온"], False, cur, fetch, [2024, 2023, 2022, 2021, 2020],
+                               [184, 188], "api", ndf, years, [])
+    by = {x["name"]: x["values"] for x in rep["stations"]}
+    assert by["성산"]["일조 시간"]["normal"] is not None and by["제주"]["일조 시간"]["normal"] is not None
+    assert rep["normalFilled"] == ["성산 일조 시간"]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
