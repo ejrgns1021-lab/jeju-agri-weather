@@ -241,7 +241,7 @@ def managelogin(req: https_fn.CallableRequest) -> Dict[str, Any]:
 
 
 @https_fn.on_call(secrets=[ADMIN_PASSWORD, KMA_API_KEY], invoker="public", memory=options.MemoryOption.MB_512, cpu=1,
-                  timeout_sec=120)
+                  timeout_sec=240)
 def jejumanage(req: https_fn.CallableRequest) -> Dict[str, Any]:
     data = req.data or {}
     if not auth.verify_token(str(data.get("token", "")), _admin_secret()):

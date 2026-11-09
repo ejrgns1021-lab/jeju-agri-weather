@@ -14,7 +14,7 @@ ai.py - AI 기상분석 (v7.0)
 
 v7.4: 모델 2종 — 관리자 화면에서 선택 (분석 자료·지시문은 모델과 무관하게 같음, 호출부만 다름)
   - gemini-3.8-flash : Vertex AI (서버 서비스 계정 인증, API 키 없음)
-  - gemma-4-31b-it   : Google AI Studio 무료 API 키 (젬마, 행정안전부 AI 공통기반 지원 모델 계열)
+  - gemma-4-26b-a4b-it / gemma-4-31b-it : Google AI Studio 무료 API 키 (젬마, 행정안전부 AI 공통기반 지원 모델 계열)
 """
 from __future__ import annotations
 
@@ -24,7 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple
 # 모델 목록 — 새 모델은 여기에 한 줄 추가 (provider: vertex | aistudio)
 MODELS: Dict[str, Dict[str, str]] = {
     "gemini-3.8-flash": {"label": "Gemini 3.8 Flash", "provider": "vertex", "note": "Vertex AI · 서버 계정 인증"},
-    "gemma-4-31b-it": {"label": "Gemma 4 31B", "provider": "aistudio", "note": "Google AI Studio 무료 키 · 공개 모델"},
+    "gemma-4-26b-a4b-it": {"label": "Gemma 4 26B (빠름)", "provider": "aistudio", "note": "Google AI Studio 무료 키 · 공개 모델 · 응답 빠름"},
+    "gemma-4-31b-it": {"label": "Gemma 4 31B", "provider": "aistudio", "note": "Google AI Studio 무료 키 · 공개 모델 · 더 크고 느림"},
 }
 DEFAULT_MODEL = "gemini-3.8-flash"
 MODEL = DEFAULT_MODEL               # (호환용) 기본 모델
@@ -381,8 +382,8 @@ def generate(digest: str, model: str = DEFAULT_MODEL, api_key: Optional[str] = N
         raise AiError("AI 분석 모듈이 설치되지 않았습니다.") from exc
     vertex = (MODELS.get(model) or {}).get("provider") == "vertex"
     try:
-        # 제미나이는 90초, 젬마(큰 공개 모델)는 150초 안에 답이 없으면 실패 처리
-        client = _client(model, api_key, 90_000 if vertex else 150_000)
+        # 제미나이는 90초, 젬마(공개 모델·무료 키라 대기가 길 수 있음)는 120초 안에 답이 없으면 실패 처리
+        client = _client(model, api_key, 90_000 if vertex else 120_000)
         contents = f"다음 분석 자료로 기상 분석 보고를 작성해 주세요.\n\n{digest}"
 
         def ask(max_tokens: int, thinking: bool = True) -> Any:
@@ -423,7 +424,11 @@ def _cut_off(resp: Any) -> bool:
 def ping(model: str = DEFAULT_MODEL, api_key: Optional[str] = None) -> str:
     """관리자 연결 점검용: 아주 짧은 요청으로 모델 응답 확인"""
     from google.genai import types
-    client = _client(model, api_key, 45_000)
+    vertex = (MODELS.get(model) or {}).get("provider") == "vertex"
+    client = _client(model, api_key, 30_000 if vertex else 90_000)
+    cfg: Dict[str, Any] = {"max_output_tokens": 256, "temperature": 0}
+    if not vertex:   # 젬마 4: 추론 끄기 → 짧은 답을 바로
+        cfg["thinking_config"] = types.ThinkingConfig(thinking_level="minimal")
     resp = client.models.generate_content(model=model, contents="'정상'이라는 한 단어로만 답하세요.",
-                                          config=types.GenerateContentConfig(max_output_tokens=256, temperature=0))
+                                          config=types.GenerateContentConfig(**cfg))
     return (getattr(resp, "text", None) or "").strip()[:40]

@@ -171,7 +171,7 @@ async function onAiClick(ev) {
     const out = $("m-ai-models").querySelector(`[data-out="${CSS.escape(test.dataset.test)}"]`);
     test.disabled = true;
     out.className = "test";
-    out.textContent = "응답 기다리는 중… (최대 45초)";
+    out.textContent = "응답 기다리는 중… (젬마는 최대 90초)";
     try {
       const r = await call("aiTest", { model: test.dataset.test });
       out.className = `test ${r.ok ? "ok" : "bad"}`;
