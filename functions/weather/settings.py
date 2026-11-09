@@ -24,7 +24,7 @@ COLLECTION = "settings"
 MODEL_DOC = "ai_dev" if os.environ.get("K_SERVICE", "").endswith("dev") else "ai"
 KEY_DOC = "ai_keys"
 CACHE_SEC = 60                      # 같은 서버 인스턴스에서 설정을 1분간 기억 (매 요청 Firestore 읽기 방지)
-KEY_RE = re.compile(r"^[A-Za-z0-9_\-]{20,200}$")
+KEY_RE = re.compile(r"^[A-Za-z0-9_.\-]{20,300}$")   # AIza… · AQ.… 형식 모두 허용
 log = logging.getLogger(__name__)
 
 _lock = threading.Lock()

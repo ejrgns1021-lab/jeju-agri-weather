@@ -380,6 +380,7 @@ def test_ai_models_and_settings():
     for bad in ("", "짧음", "has space in key 1234567890"):
         assert not settings.KEY_RE.match(bad), bad
     assert settings.KEY_RE.match("AIzaSyA1234567890abcdefGHIJKLmnopQRSTU")
+    assert settings.KEY_RE.match("AQ.Ab8RN6Ixyz1234567890abcdefGHIJKLmnop_-")      # 새 형식(점 포함)
 
 
 if __name__ == "__main__":
