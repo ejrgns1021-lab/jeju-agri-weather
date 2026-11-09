@@ -7,7 +7,8 @@ archive.py - 관측 일자료 저장소 (v7.5)
   · 저장 단위 : 관측망·지점·연도별 문서 1개  obs_daily/asos_184_2024  (1년치 일자료, 약 30KB)
   · 매일 09시 : 최근 10일(놓친 날이 있으면 그만큼 더)을 기상청에서 다시 받아 '덮어쓰기'
                 → 기상청이 며칠 전 자료를 고쳐도 다음 날 아침 자동 반영
-  · 매월 1일  : 최근 400일을 통째로 다시 받아 덮어쓰기 (오래전 수정분 반영)
+  · 매주 월요일: 올해 1월 1일~어제 전체를 다시 받아 덮어쓰기 (지난 자료 수정분 반영, 지점당 기상청 1회 호출)
+                1월에는 작년 1년치도 함께 (연말 자료 수정분 반영)
   · 빠진 연도 : 1991년~올해 중 저장되지 않은 연도는 예약 작업·관리자 화면에서 채움.
                 조회 중 저장되지 않은 연도를 만나면 그 연도만 기상청에서 받아 저장(최초 1회)
 
@@ -54,7 +55,8 @@ META_COLLECTION = "obs_meta"
 ARCHIVE_VERSION = 1
 FIRST_YEAR = 1991                    # 평년(1991~2020) 계산에 필요한 첫 해
 SYNC_DAYS = 10                       # 매일 다시 받아 덮어쓰는 최근 일수
-MONTHLY_SYNC_DAYS = 400              # 매월 1일 다시 받는 최근 일수
+MAX_GAP_DAYS = 400                   # 갱신을 오래 못 했을 때 한 번에 다시 받는 최대 일수
+WEEKLY_DAY = 0                       # 매주 올해 전체를 다시 받는 요일 (0 = 월요일)
 MEM_TTL_SEC = 600                    # 같은 서버 안에서 연도 문서를 기억하는 시간
 WORKERS = 4                          # 기상청 동시 요청 수
 KST = dt.timezone(dt.timedelta(hours=9))
@@ -301,15 +303,19 @@ def _compute_as_of() -> Optional[str]:
 # ---------------------------------------------------------------------
 # 예약 작업 · 관리자 실행
 # ---------------------------------------------------------------------
-def sync_recent(api_key: str, days: Optional[int] = None) -> Dict[str, Any]:
-    """최근 자료 덮어쓰기. days 를 주지 않으면 10일(놓친 날이 있으면 마지막 기준일 2일 전부터)."""
+def sync_recent(api_key: str, days: Optional[int] = None, whole_year: bool = False) -> Dict[str, Any]:
+    """최근 자료 덮어쓰기. days 를 주지 않으면 10일(놓친 날이 있으면 마지막 기준일 2일 전부터).
+    whole_year=True 면 올해 1월 1일부터(1월에는 작년 1월 1일부터) — 매주 월요일 갱신"""
     today = today_kst()
-    if days is None:
+    if whole_year:
+        first = dt.date(today.year - 1 if today.month == 1 else today.year, 1, 1)
+        days = (today - first).days
+    elif days is None:
         days = SYNC_DAYS
         last = meta_get().get("asOf")
         if last:
             gap = (today - dt.date.fromisoformat(last)).days + 2
-            days = max(days, min(gap, MONTHLY_SYNC_DAYS))
+            days = max(days, min(gap, MAX_GAP_DAYS))
     start = today - dt.timedelta(days=days)
     end = today - dt.timedelta(days=1)
     t0 = time.time()
@@ -385,7 +391,7 @@ def scheduled(api_key: str, budget: float = 480.0) -> Dict[str, Any]:
     meta = meta_get()
     out: Dict[str, Any] = {}
     if meta.get("lastOkDate") != today.isoformat():
-        out["sync"] = sync_recent(api_key, MONTHLY_SYNC_DAYS if today.day == 1 else None)
+        out["sync"] = sync_recent(api_key, whole_year=today.weekday() == WEEKLY_DAY)
     else:
         out["sync"] = "오늘 갱신 완료 — 건너뜀"
     remain = budget - (time.time() - t0)
