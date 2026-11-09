@@ -291,7 +291,11 @@ def test_ai_digest():
     assert [x["name"] for x in res["stationBrief"]["stations"]] == ["제주", "서귀포", "성산", "고산"]
     for st in ("## 지점: 제주", "## 지점: 서귀포", "## 지점: 성산", "## 지점: 고산"):
         assert st in dg, st
-    assert "5년" in dg and "전년" not in dg and "2025년 7월 상순" in dg and len(dg) < 80000
+    assert "5년" in dg and "전년" not in dg and len(dg) < 80000
+    assert "상순" not in dg and "중순" not in dg and "하순" not in dg and "일별 구간" in dg   # v6: 순별 대신 일별 구간
+    # 구간 표기는 정확한 날짜·일수 (예: 7/21~7/31(11일간))
+    import re as _re
+    assert _re.search(r"\d+/\d+~\d+/\d+\(\d+일간\)", dg), dg[:2000]
     assert ai.valid_result(res, req) and not ai.valid_result({"params": {"start": "2024-01-01"}}, req) and not ai.valid_result(None, req)
     no_sb = dict(res, stationBrief=None)
     assert not ai.valid_result(no_sb, req)
@@ -313,6 +317,20 @@ def test_ai_digest():
     d = [f"2025-07-{i:02d}" for i in range(1, 11)]
     assert ai._spells(d, [True] * 3 + [False] + [True] * 6, 3) == [("2025-07-01", "2025-07-03", 3), ("2025-07-05", "2025-07-10", 6)]
     assert ai._spells(d, [False] * 10, 1) == []
+    assert ai._spans(d, [True] * 3 + [False] + [True] * 6, 3) == [(0, 2), (4, 9)]
+    # 고른 지점만: 분석 자료·지시문 모두에서 고르지 않은 지점 제외
+    req2 = pipeline.validate_request({
+        "start": "2025-07-01", "end": "2025-07-31", "metrics": list(METRICS), "stations": ["서귀포", "고산"],
+        "source": "apihub", "normalMode": "api", "extreme": False, "rainZero": True})
+    res2 = pipeline.run_analysis(req2, "TESTKEY")
+    assert ai.digest_stations(res2) == ["서귀포", "고산"]
+    dg2 = ai.build_digest(res2)
+    assert "## 지점: 서귀포" in dg2 and "## 지점: 고산" in dg2 and "## 지점: 제주" not in dg2 and "## 지점: 성산" not in dg2
+    sy2 = ai.build_system(ai.digest_stations(res2))
+    assert "### 서귀포" in sy2 and "### 고산" in sy2 and "### 제주" not in sy2 and "### 성산" not in sy2 and "지점 차이" in sy2
+    sy1 = ai.build_system(["성산"])
+    assert "### 성산" in sy1 and "### 제주" not in sy1 and "지점 차이" not in sy1
+    assert all(f"### {n}" in ai.build_system(None) for n in ("제주", "서귀포", "성산", "고산"))
 
 
 def test_normals_notice_only_for_selected():

@@ -206,7 +206,7 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
         result = sent if ai.valid_result(sent, query) else (store.result_get(rkey) or run_analysis(query, api_key))
         digest = ai.build_digest(result)
         log.info("AI 분석 자료 준비 %.1f초 (%d자, 화면 전달=%s)", time.time() - t0, len(digest), result is sent)
-        text = ai.generate(digest, model=model, api_key=settings.api_key_for(model))
+        text = ai.generate(digest, model=model, api_key=settings.api_key_for(model), stations=ai.digest_stations(result))
         log.info("AI 분석 완료 %.1f초 (%d자)", time.time() - t0, len(text))
     except ai.AiError as exc:
         raise _fail(https_fn.FunctionsErrorCode.FAILED_PRECONDITION, str(exc))

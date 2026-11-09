@@ -51,7 +51,7 @@ async function run(getToken, getResult, refresh = false) {
   const card = $("ai-card");
   card.hidden = false;
   $("ai-body").innerHTML = '<div class="ai-wait"><span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>'
-    + "<p>제주·서귀포·성산·고산 지점별로 최근 5년과 비교해 농작물에 영향을 줄 만한 기상 요인을 찾고 종합하는 중입니다. 보통 20~60초 걸립니다.</p></div>";
+    + "<p>고른 지점별로 일별 자료에서 가뭄·과습·일조 부족·폭염 등이 며칠간 이어졌는지 찾고 최근 5년과 비교해 종합하는 중입니다. 보통 20~60초 걸립니다.</p></div>";
   $("ai-meta").textContent = "";
   card.scrollIntoView({ behavior: "smooth", block: "start" });
   try {
