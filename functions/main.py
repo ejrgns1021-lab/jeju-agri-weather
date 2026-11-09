@@ -8,7 +8,7 @@ main.py - Firebase Cloud Functions (Python) 진입점
   jejuprogress: 조회 진행 상황(단계·진행률) 확인, 60초가 넘는 조회는 완료 후 결과도 여기서 전달
   jejuforecast: 대시보드 상단 예보(단기·중기) — 20분간 저장해 재사용
   managelogin / jejumanage : 관리자 화면(/manage.html) — 이용 현황, 저장분 비우기, 연결 점검, AI 모델 선택(v7.4)
-  jejusync   : (예약 작업, v7.5) 매일 09·10·12시 — 최근 관측 자료를 기상청에서 다시 받아 저장소에 덮어쓰기
+  jejusync   : (예약 작업, v7.5) 매일 09시(실패 시 18시까지 매시 재시도) — 최근 관측 자료를 기상청에서 다시 받아 저장소에 덮어쓰기
                (조회는 저장소에서만 읽으므로 기상청이 느리거나 끊겨도 조회가 됨)
   jejubrief  : [AI 기상분석] 버튼을 누를 때만 — 조회 결과를 간추려 제미나이(Vertex AI)가 농업 관점 해설 작성
 
@@ -362,11 +362,12 @@ def _health(api_key: str) -> list:
 
 
 # ---------------------------------------------------------------------
-# 예약 작업 (v7.5): 매일 09:05 · 10:05 · 12:05 (한국 시간)
-#   오늘 갱신이 이미 성공했으면 건너뛰고, 실패했으면 다음 시각에 다시 시도.
+# 예약 작업 (v7.5): 매일 09:05부터 18:05까지 매시 (한국 시간)
+#   오늘 갱신이 이미 성공했으면 바로 끝내고(비용 거의 없음), 실패했으면 한 시간 뒤 다시 시도.
+#   (기상청 서버가 구글 서버의 연결을 가끔 한동안 받지 않아 재시도 기회를 넉넉히 둠)
 #   남는 시간에는 아직 저장되지 않은 과거 연도를 채움.
 # ---------------------------------------------------------------------
-@scheduler_fn.on_schedule(schedule="5 9,10,12 * * *", timezone=scheduler_fn.Timezone("Asia/Seoul"),
+@scheduler_fn.on_schedule(schedule="5 9-18 * * *", timezone=scheduler_fn.Timezone("Asia/Seoul"),
                           secrets=[KMA_API_KEY], memory=options.MemoryOption.GB_1, cpu=1, timeout_sec=540,
                           max_instances=1)
 def jejusync(event: scheduler_fn.ScheduledEvent) -> None:

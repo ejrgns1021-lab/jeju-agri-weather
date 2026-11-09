@@ -385,7 +385,7 @@ def backfill(api_key: str, time_budget: float = 200.0) -> Dict[str, Any]:
 
 
 def scheduled(api_key: str, budget: float = 480.0) -> Dict[str, Any]:
-    """예약 작업(09·10·12시): 오늘 갱신이 이미 성공했으면 건너뛰고, 남는 시간에 빠진 연도 채우기"""
+    """예약 작업(09~18시 매시): 오늘 갱신이 이미 성공했으면 건너뛰고, 남는 시간에 빠진 연도 채우기"""
     t0 = time.time()
     today = today_kst()
     meta = meta_get()
