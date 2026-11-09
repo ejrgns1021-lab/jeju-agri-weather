@@ -85,7 +85,7 @@ async function loadStats() {
 async function runHealth() {
   const btn = $("m-health");
   btn.disabled = true;
-  $("m-health-out").innerHTML = '<p class="muted small">점검 중… (최대 30초)</p>';
+  $("m-health-out").innerHTML = '<p class="muted small">점검 중… (젬마 포함 최대 2분)</p>';
   try {
     const r = await call("health");
     $("m-health-out").innerHTML = r.checks.map((c) => `<div class="m-check ${c.ok ? "ok" : "bad"}"><b>${c.ok ? "✔" : "✖"} ${esc(c.name)}</b>`
