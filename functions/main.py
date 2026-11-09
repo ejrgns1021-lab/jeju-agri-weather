@@ -376,6 +376,6 @@ def jejusync(event: scheduler_fn.ScheduledEvent) -> None:
         return
     try:
         out = archive.scheduled(api_key)
-        log.info("저장소 갱신: %s", _redact(json.dumps(out, ensure_ascii=False, default=str), api_key)[:800])
+        print("저장소 갱신: " + _redact(json.dumps(out, ensure_ascii=False, default=str), api_key)[:800], flush=True)
     except Exception as exc:
         log.error("저장소 갱신 실패: %s", _redact(repr(exc), api_key))
