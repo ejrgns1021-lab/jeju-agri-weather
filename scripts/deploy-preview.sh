@@ -20,8 +20,8 @@ rm -rf "$WORK" && mkdir -p "$WORK"
 cp -r functions "$WORK/functions-dev"
 rm -rf "$WORK/functions-dev/venv" "$WORK/functions-dev/tests"
 # 함수 이름만 바꿔 라이브 함수와 분리
-sed -i -E 's/^def (login|jejuweather|jejuprogress|jejuforecast|jejubrief|managelogin|jejumanage)\(/def \1dev(/' "$WORK/functions-dev/main.py"
-grep -E "^def (login|jejuweather|jejuprogress|jejuforecast|jejubrief|managelogin|jejumanage)dev\(" "$WORK/functions-dev/main.py" | wc -l | grep -q 7 \
+sed -i -E 's/^def (login|jejuweather|jejuprogress|jejuforecast|jejubrief|managelogin|jejumanage|jejusync)\(/def \1dev(/' "$WORK/functions-dev/main.py"
+grep -E "^def (login|jejuweather|jejuprogress|jejuforecast|jejubrief|managelogin|jejumanage|jejusync)dev\(" "$WORK/functions-dev/main.py" | wc -l | grep -q 8 \
   || { echo "함수 이름 변경 실패" >&2; exit 1; }
 cp -r public "$WORK/public"
 

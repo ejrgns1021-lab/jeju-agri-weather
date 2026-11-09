@@ -175,9 +175,17 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
                 report(pct_from + (pct_to - pct_from) * n // len(years), stage,
                        f"{futures[fut]}년 동기간 자료 수신 완료 ({n}/{len(years)})")
 
+    # v7.5: 필요한 연도 자료(해당 연도·최근 5년·평년 30년)를 저장소에서 한 번에 읽어 둠
+    if source == "apihub":
+        from . import archive
+        need_years = set(range(start.year - RECENT_YEARS, end.year + 1))
+        if normal_mode != "skip":
+            need_years |= set(range(NORMAL_START_YEAR - 1, NORMAL_END_YEAR + 2))
+        archive.warm(station_ids, sorted(need_years))
+
     # 1) 해당 연도
-    src_name = "기상청 API허브" if source == "apihub" else "공공데이터포털"
-    report(2, f"해당 연도({start.year}) 관측 자료", f"{src_name}에 접속하는 중")
+    src_name = "저장된 기상청 관측 자료(매일 09시 갱신)" if source == "apihub" else "공공데이터포털"
+    report(2, f"해당 연도({start.year}) 관측 자료", f"{src_name} 불러오는 중")
     current_df, errors = fetch_all_stations(start, end, api_key, source, station_ids, rain_zero,
                                             progress=lambda m: report(5, f"해당 연도({start.year}) 관측 자료", m))
     current_daily = jeju_daily_mean(current_df)
@@ -193,13 +201,14 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         return {"ok": False, "params": params, "notices": notices + [{
             "level": "error", "text": "선택한 기간에 조회된 관측 자료가 없습니다. 기간과 API 키를 확인해 주세요."}]}
 
-    # '진단' 탭용 원문(1일치)은 별도 스레드에서 받고, 결과 정리 시점까지 안 오면 생략 (조회를 지연시키지 않도록)
-    diag_pool = ThreadPoolExecutor(max_workers=1)
+    # v7.5: '진단' 탭용 기상청 원문은 더 이상 조회 때마다 받지 않음 (관리자 화면 '연결 점검'에서 확인)
     diag_future = None
+    data_as_of: Optional[str] = None
     if source == "apihub":
-        ymd = start.strftime("%Y%m%d")
-        diag_future = diag_pool.submit(fetch_apihub_daily_text, station_ids[0], ymd, ymd, api_key)
-    diag_pool.shutdown(wait=False)
+        from . import archive
+        data_as_of = archive.as_of()
+        if data_as_of and end.isoformat() > data_as_of:
+            notices.append({"level": "info", "text": f"관측 자료는 매일 09시에 갱신됩니다. {data_as_of}까지의 자료로 계산했습니다."})
 
     # 2) 최근 5년 (첫 해 = 전년도)
     recent_years = [start.year - k for k in range(1, RECENT_YEARS + 1)]
@@ -366,6 +375,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
             "recent3Range": f"{min(recent3_years)}~{max(recent3_years)}",
             "normalNote": normal_note,
             "normalIncluded": bool(normal_cnt) and max(normal_cnt.values()) > 0,
+            "dataAsOf": data_as_of,
             "aggDesc": "기온은 기간 평균, 누적 강수량·일조 시간은 기간 합산, 강우일수는 일강수량 0.1mm 이상인 날 수, "
                        "열대야 일수는 일 최저기온 25.0℃ 이상인 날 수"
                        + (" / 최고·최저 기온은 기간 극값" if extreme else ""),

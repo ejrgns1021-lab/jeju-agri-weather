@@ -406,3 +406,25 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("통과:", name)
+
+
+def test_archive_overwrite_and_read():
+    """v7.5 저장소: 다시 받으면 기존 날짜 값을 덮어쓰고, 조회는 저장분에서 읽음"""
+    from weather import archive
+    stn = 184
+    day = dt.date(2019, 3, 5)
+    archive.refresh_range(stn, dt.date(2019, 3, 1), dt.date(2019, 3, 10), "KEY")
+    df, err = archive.read_range(day, day, [stn], True, "KEY")
+    assert not err and len(df) == 1
+    before = float(df["avgTa"].iloc[0])
+    # 기상청이 값을 고친 상황: 같은 날짜를 다른 값으로 다시 받음
+    orig = kma_api.fetch_apihub_daily_text
+    archive.fetch_apihub_daily_text = lambda s, a, b, k: orig(s, a, b, k).replace(f" {before:.1f} ", f" {before + 0.5:.1f} ", 1)
+    try:
+        archive.refresh_range(stn, day, day, "KEY")
+    finally:
+        archive.fetch_apihub_daily_text = orig
+    df2, _ = archive.read_range(dt.date(2019, 3, 1), dt.date(2019, 3, 10), [stn], True, "KEY")
+    assert float(df2[df2["date"] == day]["avgTa"].iloc[0]) == before + 0.5
+    assert len(df2) == 10                                   # 다른 날짜는 그대로 유지
+    assert set(["rainDays", "tropicalNights", "stn_name"]) <= set(df2.columns)

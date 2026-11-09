@@ -32,11 +32,12 @@
     <details class="changelog">
       <summary>
         <span class="cl-title"><i data-icon="history"></i> 업데이트 내역</span>
-        <span class="cl-now">현재 v7.4</span>
+        <span class="cl-now">현재 v7.5</span>
         <i data-icon="chevron-down" class="cl-chev"></i>
       </summary>
       <ol class="cl-list">
-        <li class="cl-new"><b>v7.4</b><span><strong>AI 기상분석</strong>: 순별 대신 일별로 가뭄·과습·일조 부족 등이 정확히 며칠간(몇 월 며칠~며칠) 이어졌는지 표시, 고른 지점만 분석, 젬마(Gemma) 모델 추가</span></li>
+        <li class="cl-new"><b>v7.5</b><span><strong>빠른 조회</strong>: 관측 자료를 미리 저장해 두고 매일 09시에 기상청 자료로 갱신 — 조회할 때 기상청을 기다리지 않아 빨라지고, 기상청 연결이 불안정해도 조회 가능</span></li>
+        <li><b>v7.4</b><span><strong>AI 기상분석</strong>: 순별 대신 일별로 가뭄·과습·일조 부족 등이 정확히 며칠간(몇 월 며칠~며칠) 이어졌는지 표시, 고른 지점만 분석, 젬마(Gemma) 모델 추가</span></li>
         <li><b>v7.3.1</b><span>사이트 이름을 <strong>제주 농업 기상계산기</strong>로 변경</span></li>
         <li><b>v7.3</b><span><strong>보고서 표</strong> 탭(지점별 본년·비교 기준, 한글 복사), <strong>비교 기준 선택</strong>(전년·최근 3년·최근 5년·평년 중 고른 것만 표시)</span></li>
         <li><b>v7.1</b><span>AI 기상분석: 기온은 최근 5년과만, 강수량은 최근 5년·평년 모두와 비교해 적정 범위면 문제없음으로 정리</span></li>
@@ -101,6 +102,7 @@
                 <label class="field"><span>종료일</span><input id="end" type="date" required></label>
               </div>
               <div class="chips" id="quick-ranges"></div>
+              <p class="muted small">관측 자료는 매일 09시에 갱신됩니다(어제까지).</p>
             </fieldset>
 
             <fieldset class="group">

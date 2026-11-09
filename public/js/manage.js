@@ -16,7 +16,7 @@ let days = 30;
 function show(app) {
   $("m-login").hidden = app;
   $("m-app").hidden = !app;
-  if (app) { loadStats(); loadAi(); }
+  if (app) { loadStats(); loadAi(); loadArchive(); }
 }
 
 async function call(action, extra = {}) {
@@ -94,6 +94,46 @@ async function runHealth() {
     $("m-health-out").innerHTML = `<p class="form-error">${esc(e.message)}</p>`;
   } finally {
     btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------- 관측 자료 저장소 (v7.5)
+function renderArchive(st, res) {
+  const rows = [];
+  if (res) {
+    const errs = Object.entries(res.errors || {});
+    const head = "filled" in res ? `채움 ${res.filled}건 · 남은 연도 ${res.left}개 (${res.sec}초)` : `갱신 ${esc(res.range || "")}`;
+    rows.push(`<div class="m-check ${errs.length ? "bad" : "ok"}"><b>${errs.length ? "✖" : "✔"} 방금 실행</b><span>${head}`
+      + (errs.length ? "<br>" + errs.map(([k, v]) => `${esc(k)}: ${esc(v)}`).join("<br>") : "") + "</span></div>");
+  }
+  const sync = st.lastSyncAt ? `${esc(st.lastSyncAt)} · ${esc(st.lastSyncRange || "")}` : "아직 없음";
+  const syncErr = Object.entries(st.lastSyncErrors || {}).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join("<br>");
+  rows.push(`<div class="m-check ${st.asOf ? "ok" : "bad"}"><b>자료 기준일</b><span>${esc(st.asOf || "없음")}까지</span></div>`);
+  rows.push(`<div class="m-check ${st.lastSyncOk === false ? "bad" : "ok"}"><b>마지막 갱신</b><span>${sync}${syncErr ? "<br>" + syncErr : ""}</span></div>`);
+  rows.push(`<div class="m-check ${st.storedDocs >= st.totalDocs ? "ok" : "bad"}"><b>저장된 연도</b><span>${st.storedDocs} / ${st.totalDocs}`
+    + ` (${st.firstYear}년~올해 × 4개 지점)<br>` + Object.entries(st.stations || {}).map(([k, v]) => `${esc(k)} ${esc(v)}`).join(" · ") + "</span></div>");
+  $("m-arc-out").innerHTML = rows.join("");
+}
+
+async function loadArchive() {
+  try {
+    renderArchive(await call("archive"));
+  } catch (e) {
+    $("m-arc-out").innerHTML = `<p class="form-error">${esc(e.message)}</p>`;
+  }
+}
+
+async function runArchive(action) {
+  const btns = [$("m-arc-sync"), $("m-arc-fill")];
+  btns.forEach((b) => { b.disabled = true; });
+  $("m-arc-out").insertAdjacentHTML("afterbegin", `<p class="muted small" id="m-arc-wait">${action === "archiveFill" ? "빠진 연도를 채우는 중… (최대 약 3분)" : "기상청에서 최근 자료를 받는 중…"}</p>`);
+  try {
+    const r = await call(action);
+    renderArchive(r.status, r.result);
+  } catch (e) {
+    $("m-arc-out").innerHTML = `<p class="form-error">${esc(e.message)}</p>`;
+  } finally {
+    btns.forEach((b) => { b.disabled = false; });
   }
 }
 
@@ -227,6 +267,8 @@ function init() {
   });
   $("m-logout").addEventListener("click", () => { ss.del(); show(false); });
   $("m-health").addEventListener("click", runHealth);
+  $("m-arc-sync").addEventListener("click", () => runArchive("archiveSync"));
+  $("m-arc-fill").addEventListener("click", () => runArchive("archiveFill"));
   $("m-cache").addEventListener("click", onCacheClick);
   $("m-ai-models").addEventListener("click", onAiClick);
   $("m-ai-key-save").addEventListener("click", () => saveKey(false));

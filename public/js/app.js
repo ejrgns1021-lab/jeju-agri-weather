@@ -345,7 +345,8 @@ function renderResult(res) {
   $("summary").replaceChildren(
     ...[
       ["calendar", "조회 기간", `${s.periodDays}일`, shortRange(p.start, p.end)],
-      ["check-circle", "자료 확보", `${s.gotDays}일`, `${Math.round((s.gotDays / s.periodDays) * 100)}%`],
+      ["check-circle", "자료 확보", `${s.gotDays}일`,
+        `${Math.round((s.gotDays / s.periodDays) * 100)}%` + (s.dataAsOf ? ` · ${s.dataAsOf.slice(5).replace("-", "/")}까지` : "")],
       ["history", "비교 연도", `${s.prevYear}년`, `최근 5년 ${s.recentRange}`],
       ["layers", "평년 기준", s.normalNote.split(" (")[0], s.normalIncluded ? "1991~2020" : "미포함"],
     ].map(([ic, k, v, sub]) => el("div", { class: "stat" },
@@ -366,7 +367,8 @@ function renderResult(res) {
   renderComparison();
 
   $("basis-table").replaceChildren(el("div", { class: "table-scroll" }, buildTable(res.basis)));
-  $("basis-note").textContent = `평년: ${s.normalNote} · 조회 시각 ${res.fetchedAt}`;
+  $("basis-note").textContent = `평년: ${s.normalNote}` + (s.dataAsOf ? ` · 관측 자료 ${s.dataAsOf}까지(매일 09시 갱신)` : "") +
+    ` · 조회 시각 ${res.fetchedAt}`;
 
   $("station-table").replaceChildren(
     el("p", { class: "muted small", text: "지점별 기간 집계와 4개 지점 평균(결측 제외)" }),
@@ -508,7 +510,8 @@ async function exportAll() {
   const p = res.params;
   const tag = `${compact(p.start)}_${compact(p.end)}`;
   const info = [`조회 기간: ${fmtDate(p.start)} ~ ${fmtDate(p.end)}`, `관측 지점: ${(p.stations || []).join(", ")}`,
-    `평년 기준: ${res.summary.normalNote}`, `조회 시각: ${res.fetchedAt}`];
+    `평년 기준: ${res.summary.normalNote}`, ...(res.summary.dataAsOf ? [`관측 자료 기준: ${res.summary.dataAsOf}까지`] : []),
+    `조회 시각: ${res.fetchedAt}`];
   const sheets = [
     { name: "비교표", title: "제주 전체(4개 지점 평균) 기상 비교표", notes: info, table: filterBases(res.comparison.all) },
     { name: "산출 근거", table: res.basis },
