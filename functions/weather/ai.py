@@ -11,13 +11,23 @@ ai.py - AI 기상분석 (v7.0)
   - 지점별 값과 극값(가장 더웠던 날 등)
 
 수치는 모두 기존 계산 결과에서 가져오며, 여기서 새로 계산하는 것은 '사건 구간 찾기'뿐입니다.
+
+v7.4: 모델 2종 — 관리자 화면에서 선택 (분석 자료·지시문은 모델과 무관하게 같음, 호출부만 다름)
+  - gemini-3.8-flash : Vertex AI (서버 서비스 계정 인증, API 키 없음)
+  - gemma-4-31b-it   : Google AI Studio 무료 API 키 (젬마, 행정안전부 AI 공통기반 지원 모델 계열)
 """
 from __future__ import annotations
 
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-MODEL = "gemini-3.8-flash"          # Vertex AI 안정 버전 (2026-09 출시)
+# 모델 목록 — 새 모델은 여기에 한 줄 추가 (provider: vertex | aistudio)
+MODELS: Dict[str, Dict[str, str]] = {
+    "gemini-3.8-flash": {"label": "Gemini 3.8 Flash", "provider": "vertex", "note": "Vertex AI · 서버 계정 인증"},
+    "gemma-4-31b-it": {"label": "Gemma 4 31B", "provider": "aistudio", "note": "Google AI Studio 무료 키 · 공개 모델"},
+}
+DEFAULT_MODEL = "gemini-3.8-flash"
+MODEL = DEFAULT_MODEL               # (호환용) 기본 모델
 LOCATION = "global"
 PROMPT_VERSION = 5                  # v5: 기온 등은 최근 5년, 강수량은 최근 5년+평년 적정 범위 판정
 
@@ -319,24 +329,68 @@ def _project_id() -> str:
     return "jeju-agri-weather"
 
 
-def generate(digest: str) -> str:
-    """Vertex AI 제미나이 호출 (서버의 서비스 계정으로 인증 — API 키 없음)"""
+def model_label(model: str) -> str:
+    m = MODELS.get(model) or {}
+    where = "Vertex AI" if m.get("provider") == "vertex" else "AI Studio"
+    return f"{m.get('label', model)} ({where})"
+
+
+def _client(model: str, api_key: Optional[str], timeout_ms: int) -> Any:
+    """모델 제공 방식에 맞는 연결 — 모델을 바꿔도 이 부분만 다름"""
+    from google import genai
+    from google.genai import types
+    provider = (MODELS.get(model) or {}).get("provider")
+    if provider == "vertex":
+        return genai.Client(enterprise=True, project=_project_id(), location=LOCATION,
+                            http_options=types.HttpOptions(timeout=timeout_ms))
+    if provider == "aistudio":
+        if not api_key:
+            raise AiError("젬마용 AI Studio API 키가 등록되지 않았습니다. 관리자 화면의 'AI 모델'에서 키를 저장해 주세요.")
+        return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=timeout_ms))
+    raise AiError(f"알 수 없는 AI 모델입니다: {model}")
+
+
+def _thinking_level(model: str) -> str:
+    # 제미나이: 추론을 짧게(LOW) · 젬마 4: 추론 끄기(minimal) → 답변에 쓸 분량 확보
+    return "LOW" if (MODELS.get(model) or {}).get("provider") == "vertex" else "minimal"
+
+
+def _friendly_error(model: str, exc: Exception) -> AiError:
+    msg = str(exc)
+    vertex = (MODELS.get(model) or {}).get("provider") == "vertex"
+    if "API_KEY_INVALID" in msg or "API key not valid" in msg:
+        return AiError("AI Studio API 키가 올바르지 않습니다. 관리자 화면에서 키를 다시 저장해 주세요.")
+    if "PERMISSION_DENIED" in msg or "403" in msg:
+        return AiError("Vertex AI 사용 권한이 없습니다. (프로젝트에서 Vertex AI API 사용 설정 필요)" if vertex
+                       else "AI Studio 키로 이 모델을 쓸 권한이 없습니다. 키를 확인해 주세요.")
+    if "timed out" in msg.lower() or "timeout" in msg.lower() or "DEADLINE" in msg:
+        return AiError("AI 응답이 늦어지고 있습니다. 잠시 후 다시 시도해 주세요.")
+    if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
+        return AiError("AI 사용량이 많아 잠시 후 다시 시도해 주세요." if vertex
+                       else "젬마 무료 사용 한도에 걸렸습니다. 잠시 후 다시 시도하거나 관리자 화면에서 모델을 바꿔 주세요.")
+    if "NOT_FOUND" in msg or "404" in msg:
+        return AiError(f"AI 모델({model})을 찾을 수 없습니다. 모델 이름을 확인해 주세요.")
+    return AiError(f"AI 분석 요청 실패 ({exc.__class__.__name__})")
+
+
+def generate(digest: str, model: str = DEFAULT_MODEL, api_key: Optional[str] = None) -> str:
+    """선택된 모델로 해설 작성 — 분석 자료(digest)와 지시문(SYSTEM)은 모델과 무관하게 동일"""
     try:
-        from google import genai
         from google.genai import types
     except ImportError as exc:      # pragma: no cover
         raise AiError("AI 분석 모듈이 설치되지 않았습니다.") from exc
+    vertex = (MODELS.get(model) or {}).get("provider") == "vertex"
     try:
-        client = genai.Client(enterprise=True, project=_project_id(), location=LOCATION,
-                              http_options=types.HttpOptions(timeout=90_000))     # 90초 안에 답이 없으면 실패 처리
+        # 제미나이는 90초, 젬마(큰 공개 모델)는 150초 안에 답이 없으면 실패 처리
+        client = _client(model, api_key, 90_000 if vertex else 150_000)
         contents = f"다음 분석 자료로 기상 분석 보고를 작성해 주세요.\n\n{digest}"
 
         def ask(max_tokens: int, thinking: bool = True) -> Any:
             cfg: Dict[str, Any] = {"system_instruction": SYSTEM, "temperature": 0.2, "max_output_tokens": max_tokens}
-            if thinking:   # 내부 추론을 짧게 → 답변에 쓸 분량 확보 (지원하지 않는 모델이면 빼고 다시 요청)
-                cfg["thinking_config"] = types.ThinkingConfig(thinking_level="LOW")
+            if thinking:   # 지원하지 않는 모델이면 빼고 다시 요청
+                cfg["thinking_config"] = types.ThinkingConfig(thinking_level=_thinking_level(model))
             try:
-                return client.models.generate_content(model=MODEL, contents=contents, config=types.GenerateContentConfig(**cfg))
+                return client.models.generate_content(model=model, contents=contents, config=types.GenerateContentConfig(**cfg))
             except Exception as e:
                 if thinking and "thinking" in str(e).lower():
                     return ask(max_tokens, thinking=False)
@@ -345,15 +399,10 @@ def generate(digest: str) -> str:
         resp = ask(8192)
         if _cut_off(resp):              # 최대 길이에 걸려 잘렸으면 한도를 더 늘려 한 번 더
             resp = ask(16384)
+    except AiError:
+        raise
     except Exception as exc:
-        msg = str(exc)
-        if "PERMISSION_DENIED" in msg or "403" in msg:
-            raise AiError("Vertex AI 사용 권한이 없습니다. (프로젝트에서 Vertex AI API 사용 설정 필요)") from exc
-        if "timed out" in msg.lower() or "timeout" in msg.lower() or "DEADLINE" in msg:
-            raise AiError("AI 응답이 늦어지고 있습니다. 잠시 후 다시 시도해 주세요.") from exc
-        if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
-            raise AiError("AI 사용량이 많아 잠시 후 다시 시도해 주세요.") from exc
-        raise AiError(f"AI 분석 요청 실패 ({exc.__class__.__name__})") from exc
+        raise _friendly_error(model, exc) from exc
     text = (getattr(resp, "text", None) or "").strip()
     if not text:
         raise AiError("AI가 분석 내용을 만들지 못했습니다. 다시 시도해 주세요.")
@@ -371,12 +420,10 @@ def _cut_off(resp: Any) -> bool:
     return "MAX_TOKENS" in str(reason)
 
 
-def ping() -> str:
-    """관리자 연결 점검용: 아주 짧은 요청으로 제미나이 응답 확인"""
-    from google import genai
+def ping(model: str = DEFAULT_MODEL, api_key: Optional[str] = None) -> str:
+    """관리자 연결 점검용: 아주 짧은 요청으로 모델 응답 확인"""
     from google.genai import types
-    client = genai.Client(enterprise=True, project=_project_id(), location=LOCATION,
-                          http_options=types.HttpOptions(timeout=30_000))
-    resp = client.models.generate_content(model=MODEL, contents="'정상'이라는 한 단어로만 답하세요.",
+    client = _client(model, api_key, 45_000)
+    resp = client.models.generate_content(model=model, contents="'정상'이라는 한 단어로만 답하세요.",
                                           config=types.GenerateContentConfig(max_output_tokens=256, temperature=0))
     return (getattr(resp, "text", None) or "").strip()[:40]

@@ -1,4 +1,4 @@
-// manage.js (관리자 화면, v7.2) — 이용 현황 · 연결 점검 · 저장분 비우기
+// manage.js (관리자 화면, v7.2) — 이용 현황 · 연결 점검 · 저장분 비우기 · AI 모델 선택(v7.4)
 // 관리자 비밀번호(ADMIN_PASSWORD)로 받은 토큰은 이 탭에서만 보관 (sessionStorage)
 import { callFunction, ApiError } from "./api.js";
 import { hydrateIcons } from "./icons.js";
@@ -16,7 +16,7 @@ let days = 30;
 function show(app) {
   $("m-login").hidden = app;
   $("m-app").hidden = !app;
-  if (app) loadStats();
+  if (app) { loadStats(); loadAi(); }
 }
 
 async function call(action, extra = {}) {
@@ -118,6 +118,94 @@ async function onCacheClick(ev) {
   }
 }
 
+// ---------------------------------------------------------------- AI 모델 (v7.4)
+let ai = null;   // { models, current, key, scope }
+
+function aiMsg(text, bad = false) {
+  const el = $("m-ai-msg");
+  el.textContent = text;
+  el.classList.toggle("form-error", bad);
+}
+
+function renderAi(r) {
+  ai = r;
+  $("m-ai-scope").textContent = r.scope === "프리뷰" ? "테스트(프리뷰)용 선택 · 라이브와 별개" : "";
+  const k = r.key || {};
+  const st = $("m-ai-keystate");
+  st.textContent = k.set ? `· 등록됨(…${k.tail}${k.updatedAt ? `, ${k.updatedAt}` : ""})` : "· 미등록";
+  st.className = `m-ai-keystate ${k.set ? "on" : "off"}`;
+  $("m-ai-models").innerHTML = r.models.map((m) => {
+    const cur = m.id === r.current;
+    const needKey = m.provider === "aistudio" && !k.set;
+    return `<div class="m-ai-model${cur ? " current" : ""}"><strong>${esc(m.label)}</strong><code>${esc(m.id)}</code>`
+      + `<span class="muted small">${esc(m.note)}${m.id === r.default ? " · 기본" : ""}</span>`
+      + (cur ? '<span class="tag">✔ 현재 사용 중</span>' : "")
+      + (needKey ? '<span class="small form-error">API 키를 먼저 저장하세요</span>' : "")
+      + `<div class="row">${cur ? "" : `<button type="button" class="btn primary small" data-use="${esc(m.id)}"${needKey ? " disabled" : ""}>이 모델 사용</button>`}`
+      + `<button type="button" class="btn ghost small" data-test="${esc(m.id)}"${needKey ? " disabled" : ""}>응답 시험</button></div>`
+      + `<span class="test" data-out="${esc(m.id)}"></span></div>`;
+  }).join("");
+}
+
+async function loadAi() {
+  try {
+    renderAi(await call("ai"));
+  } catch (e) {
+    $("m-ai-models").innerHTML = `<p class="form-error">${esc(e.message)}</p>`;
+  }
+}
+
+async function onAiClick(ev) {
+  const use = ev.target.closest("button[data-use]");
+  const test = ev.target.closest("button[data-test]");
+  if (use) {
+    use.disabled = true;
+    try {
+      renderAi(await call("aiModel", { model: use.dataset.use }));
+      aiMsg("모델을 바꿨습니다. 1분 안에 모든 서버에 반영됩니다.");
+    } catch (e) {
+      use.disabled = false;
+      aiMsg(e.message, true);
+    }
+  } else if (test) {
+    const out = $("m-ai-models").querySelector(`[data-out="${CSS.escape(test.dataset.test)}"]`);
+    test.disabled = true;
+    out.className = "test";
+    out.textContent = "응답 기다리는 중… (최대 45초)";
+    try {
+      const r = await call("aiTest", { model: test.dataset.test });
+      out.className = `test ${r.ok ? "ok" : "bad"}`;
+      out.textContent = `${r.ok ? "✔" : "✖"} ${r.detail} (${r.sec}초)`;
+    } catch (e) {
+      out.className = "test bad";
+      out.textContent = `✖ ${e.message}`;
+    } finally {
+      test.disabled = false;
+    }
+  }
+}
+
+async function saveKey(del) {
+  const input = $("m-ai-key");
+  const key = del ? "" : input.value.trim();
+  if (!del && !key) { aiMsg("키를 붙여넣은 뒤 저장해 주세요.", true); return; }
+  if (del && ai && ai.models.find((m) => m.id === ai.current)?.provider === "aistudio") {
+    aiMsg("지금 젬마를 쓰고 있어 키를 지울 수 없습니다. 먼저 다른 모델로 바꿔 주세요.", true);
+    return;
+  }
+  const btn = $(del ? "m-ai-key-del" : "m-ai-key-save");
+  btn.disabled = true;
+  try {
+    renderAi(await call("aiKey", { key }));
+    input.value = "";
+    aiMsg(del ? "키를 지웠습니다." : "키를 저장했습니다. 젬마 카드의 '응답 시험'으로 확인해 보세요.");
+  } catch (e) {
+    aiMsg(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function init() {
   hydrateIcons();
   if (/--/.test(location.hostname)) $("preview-banner").hidden = false;
@@ -140,6 +228,9 @@ function init() {
   $("m-logout").addEventListener("click", () => { ss.del(); show(false); });
   $("m-health").addEventListener("click", runHealth);
   $("m-cache").addEventListener("click", onCacheClick);
+  $("m-ai-models").addEventListener("click", onAiClick);
+  $("m-ai-key-save").addEventListener("click", () => saveKey(false));
+  $("m-ai-key-del").addEventListener("click", () => saveKey(true));
   $("m-range").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-days]");
     if (!b) return;

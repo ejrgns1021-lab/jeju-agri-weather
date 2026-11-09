@@ -360,6 +360,28 @@ def test_station_report_fills_missing_normals():
     assert rep["normalFilled"] == ["성산 일조 시간"]
 
 
+def test_ai_models_and_settings():
+    """v7.4: 모델 2종 등록, 저장소 없이도 기본 모델(제미나이), 젬마는 키가 없으면 안내 문구"""
+    from weather import ai, settings
+    assert ai.DEFAULT_MODEL in ai.MODELS and len(ai.MODELS) >= 2
+    providers = {v["provider"] for v in ai.MODELS.values()}
+    assert providers == {"vertex", "aistudio"}
+    assert settings.get_model() == ai.DEFAULT_MODEL          # Firestore 꺼짐 → 기본값
+    assert settings.api_key_for(ai.DEFAULT_MODEL) is None    # Vertex AI 는 키 없음
+    gemma = next(k for k, v in ai.MODELS.items() if v["provider"] == "aistudio")
+    assert "AI Studio" in ai.model_label(gemma) and "Vertex AI" in ai.model_label(ai.DEFAULT_MODEL)
+    try:
+        ai.generate("자료", model=gemma, api_key=None)
+        raise AssertionError("키 없이 호출되면 안 됨")
+    except ai.AiError as exc:
+        assert "키" in str(exc)
+    st = settings.ai_status()
+    assert st["current"] == ai.DEFAULT_MODEL and st["key"]["set"] is False and "aistudio" not in str(st["key"].get("tail"))
+    for bad in ("", "짧음", "has space in key 1234567890"):
+        assert not settings.KEY_RE.match(bad), bad
+    assert settings.KEY_RE.match("AIzaSyA1234567890abcdefGHIJKLmnopQRSTU")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

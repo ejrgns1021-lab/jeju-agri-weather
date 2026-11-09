@@ -51,14 +51,14 @@ async function run(getToken, getResult, refresh = false) {
   const card = $("ai-card");
   card.hidden = false;
   $("ai-body").innerHTML = '<div class="ai-wait"><span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>'
-    + "<p>제주·서귀포·성산·고산 지점별로 최근 5년과 비교해 농작물에 영향을 줄 만한 기상 요인을 찾고 종합하는 중입니다. 보통 20~40초 걸립니다.</p></div>";
+    + "<p>제주·서귀포·성산·고산 지점별로 최근 5년과 비교해 농작물에 영향을 줄 만한 기상 요인을 찾고 종합하는 중입니다. 보통 20~60초 걸립니다.</p></div>";
   $("ai-meta").textContent = "";
   card.scrollIntoView({ behavior: "smooth", block: "start" });
   try {
     const res = await callFunction("jejubrief", { token: getToken(), query: params, result: pickResult(res0), refresh });
     current = { params, text: res.text };
     $("ai-body").innerHTML = mdToHtml(res.text);
-    $("ai-meta").textContent = `${res.period} · ${res.cached ? "저장된 분석" : "새 분석"} ${res.createdAt} · ${res.model} (Vertex AI)`
+    $("ai-meta").textContent = `${res.period} · ${res.cached ? "저장된 분석" : "새 분석"} ${res.createdAt} · ${res.modelLabel || `${res.model} (Vertex AI)`}`
       + " · AI가 작성한 참고 자료이므로 중요한 판단에는 표의 수치를 함께 확인하세요.";
   } catch (e) {
     const msg = e instanceof ApiError ? e.message : String(e);
