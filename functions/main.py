@@ -7,7 +7,7 @@ main.py - Firebase Cloud Functions (Python) 진입점
                (이름에 'analyze' 등을 쓰면 브라우저 광고·추적 차단 기능이 요청을 막으므로 중립적인 이름 사용)
   jejuprogress: 조회 진행 상황(단계·진행률) 확인, 60초가 넘는 조회는 완료 후 결과도 여기서 전달
   jejuforecast: 대시보드 상단 예보(단기·중기) — 20분간 저장해 재사용
-  managelogin / jejumanage : 관리자 화면(/manage.html) — 이용 현황, 저장분 비우기, 연결 점검
+  managelogin / jejumanage : 관리자 화면(/manage.html) — 이용 현황, 저장분 비우기, 연결 점검, AI 모델 선택(v7.4)
   jejubrief  : [AI 기상분석] 버튼을 누를 때만 — 조회 결과를 간추려 제미나이(Vertex AI)가 농업 관점 해설 작성
 
 두 함수 모두 '호출 가능 함수(callable)' 이며, 화면(public/js/api.js)이 호출합니다.
@@ -31,6 +31,7 @@ from weather import store
 from weather import forecast as fc
 from weather import ai
 from weather import usage
+from weather import settings
 from weather.kma_api import WeatherApiError, WeatherApiTimeoutError
 from weather.pipeline import InputError, run_analysis, validate_request
 
@@ -57,7 +58,7 @@ def _redact(text: str, secret: str) -> str:
     text = str(text)
     if secret:
         text = text.replace(secret, "****")
-    return re.sub(r"(authKey|serviceKey)=[^&\s'\")]+", r"\1=****", text)
+    return re.sub(r"(authKey|serviceKey|key)=[^&\s'\")]+", r"\1=****", text)
 
 
 @https_fn.on_call(secrets=[APP_PASSWORD], invoker="public", memory=options.MemoryOption.MB_256, timeout_sec=30)
@@ -190,7 +191,8 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
         raise _fail(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, str(exc))
     usage.record("brief", data.get("cid"))
     rkey = store.result_key(query)
-    akey = f"{rkey}_ai{ai.PROMPT_VERSION}_{ai.MODEL}"
+    model = settings.get_model()            # 관리자 화면에서 고른 모델 (기본: 제미나이)
+    akey = f"{rkey}_ai{ai.PROMPT_VERSION}_{model}"
     final = store.is_finalized(query["end"].strftime("%Y%m%d"))
     if not data.get("refresh"):
         saved = store.ai_get(akey)
@@ -204,7 +206,7 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
         result = sent if ai.valid_result(sent, query) else (store.result_get(rkey) or run_analysis(query, api_key))
         digest = ai.build_digest(result)
         log.info("AI 분석 자료 준비 %.1f초 (%d자, 화면 전달=%s)", time.time() - t0, len(digest), result is sent)
-        text = ai.generate(digest)
+        text = ai.generate(digest, model=model, api_key=settings.api_key_for(model), stations=ai.digest_stations(result))
         log.info("AI 분석 완료 %.1f초 (%d자)", time.time() - t0, len(text))
     except ai.AiError as exc:
         raise _fail(https_fn.FunctionsErrorCode.FAILED_PRECONDITION, str(exc))
@@ -213,7 +215,7 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
     except Exception as exc:
         log.error("AI 분석 오류: %s", _redact(repr(exc), api_key))
         raise _fail(https_fn.FunctionsErrorCode.INTERNAL, "AI 분석 중 오류가 발생했습니다.")
-    out = {"text": text, "model": ai.MODEL, "createdAt": time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + 9 * 3600)),
+    out = {"text": text, "model": model, "modelLabel": ai.model_label(model), "createdAt": time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + 9 * 3600)),
            "period": f"{query['start']:%Y-%m-%d} ~ {query['end']:%Y-%m-%d}"}
     store.ai_put(akey, out, final=final)
     return out
@@ -239,7 +241,7 @@ def managelogin(req: https_fn.CallableRequest) -> Dict[str, Any]:
 
 
 @https_fn.on_call(secrets=[ADMIN_PASSWORD, KMA_API_KEY], invoker="public", memory=options.MemoryOption.MB_512, cpu=1,
-                  timeout_sec=120)
+                  timeout_sec=240)
 def jejumanage(req: https_fn.CallableRequest) -> Dict[str, Any]:
     data = req.data or {}
     if not auth.verify_token(str(data.get("token", "")), _admin_secret()):
@@ -261,6 +263,35 @@ def jejumanage(req: https_fn.CallableRequest) -> Dict[str, Any]:
         return {"deleted": n}
     if action == "health":
         return {"checks": _health(api_key)}
+    if action == "ai":                      # AI 모델 선택·키 상태 (키 값은 보내지 않음)
+        return settings.ai_status()
+    if action in ("aiModel", "aiKey"):
+        try:
+            if action == "aiModel":
+                settings.set_model(str(data.get("model") or ""))
+                log.info("관리자: AI 모델 변경 → %s (%s)", settings.get_model(), settings.MODEL_DOC)
+            else:
+                settings.set_aistudio_key(str(data.get("key") or ""))
+                log.info("관리자: AI Studio 키 %s", "저장" if data.get("key") else "삭제")
+        except ValueError as exc:
+            raise _fail(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, str(exc))
+        except RuntimeError as exc:
+            raise _fail(https_fn.FunctionsErrorCode.UNAVAILABLE, str(exc))
+        return settings.ai_status()
+    if action == "aiTest":                  # 고른 모델에 짧은 요청 1번
+        model = str(data.get("model") or settings.get_model())
+        if model not in ai.MODELS:
+            raise _fail(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "알 수 없는 모델입니다.")
+        akey = settings.api_key_for(model) or ""
+        t0 = time.time()
+        try:
+            reply = ai.ping(model, akey or None)
+            return {"ok": True, "detail": f"{ai.model_label(model)} 응답: {reply or '(빈 응답)'}", "sec": round(time.time() - t0, 1)}
+        except ai.AiError as exc:
+            return {"ok": False, "detail": str(exc), "sec": round(time.time() - t0, 1)}
+        except Exception as exc:
+            detail = _redact(_redact(f"{exc.__class__.__name__}: {exc}", api_key), akey)[:200]
+            return {"ok": False, "detail": detail, "sec": round(time.time() - t0, 1)}
     raise _fail(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "알 수 없는 요청입니다.")
 
 
@@ -294,9 +325,22 @@ def _health(api_key: str) -> list:
         return f"단기예보 {bd} {bt} 발표분 {res.get('total', 0)}개 항목"
 
     def gemini() -> str:
-        return f"{ai.MODEL} 응답: {ai.ping() or '(빈 응답)'}"
+        return f"{ai.MODEL} 응답: {ai.ping(ai.MODEL) or '(빈 응답)'}"
+
+    gkey = settings.get_aistudio_key()
+
+    def gemma() -> str:
+        m = next(k for k, v in ai.MODELS.items() if v["provider"] == "aistudio")
+        if not gkey:
+            raise RuntimeError("AI Studio 키 미등록 (아래 'AI 모델'에서 저장)")
+        return f"{m} 응답: {ai.ping(m, gkey) or '(빈 응답)'}"
 
     run("기상청 일자료(API허브)", kma_daily)
     run("기상청 단기예보", kma_forecast)
     run("제미나이(Vertex AI)", gemini)
+    run("젬마(AI Studio)", gemma)
+    for r in results:
+        r["detail"] = _redact(r["detail"], gkey)
+    current = settings.get_model()
+    results.append({"name": "현재 AI 기상분석 모델", "ok": True, "detail": ai.model_label(current), "sec": 0})
     return results

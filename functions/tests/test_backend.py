@@ -291,7 +291,11 @@ def test_ai_digest():
     assert [x["name"] for x in res["stationBrief"]["stations"]] == ["제주", "서귀포", "성산", "고산"]
     for st in ("## 지점: 제주", "## 지점: 서귀포", "## 지점: 성산", "## 지점: 고산"):
         assert st in dg, st
-    assert "5년" in dg and "전년" not in dg and "2025년 7월 상순" in dg and len(dg) < 80000
+    assert "5년" in dg and "전년" not in dg and len(dg) < 80000
+    assert "상순" not in dg and "중순" not in dg and "하순" not in dg and "일별 구간" in dg   # v6: 순별 대신 일별 구간
+    # 구간 표기는 정확한 날짜·일수 (예: 7/21~7/31(11일간))
+    import re as _re
+    assert _re.search(r"\d+/\d+~\d+/\d+\(\d+일간\)", dg), dg[:2000]
     assert ai.valid_result(res, req) and not ai.valid_result({"params": {"start": "2024-01-01"}}, req) and not ai.valid_result(None, req)
     no_sb = dict(res, stationBrief=None)
     assert not ai.valid_result(no_sb, req)
@@ -313,6 +317,20 @@ def test_ai_digest():
     d = [f"2025-07-{i:02d}" for i in range(1, 11)]
     assert ai._spells(d, [True] * 3 + [False] + [True] * 6, 3) == [("2025-07-01", "2025-07-03", 3), ("2025-07-05", "2025-07-10", 6)]
     assert ai._spells(d, [False] * 10, 1) == []
+    assert ai._spans(d, [True] * 3 + [False] + [True] * 6, 3) == [(0, 2), (4, 9)]
+    # 고른 지점만: 분석 자료·지시문 모두에서 고르지 않은 지점 제외
+    req2 = pipeline.validate_request({
+        "start": "2025-07-01", "end": "2025-07-31", "metrics": list(METRICS), "stations": ["서귀포", "고산"],
+        "source": "apihub", "normalMode": "api", "extreme": False, "rainZero": True})
+    res2 = pipeline.run_analysis(req2, "TESTKEY")
+    assert ai.digest_stations(res2) == ["서귀포", "고산"]
+    dg2 = ai.build_digest(res2)
+    assert "## 지점: 서귀포" in dg2 and "## 지점: 고산" in dg2 and "## 지점: 제주" not in dg2 and "## 지점: 성산" not in dg2
+    sy2 = ai.build_system(ai.digest_stations(res2))
+    assert "### 서귀포" in sy2 and "### 고산" in sy2 and "### 제주" not in sy2 and "### 성산" not in sy2 and "지점 차이" in sy2
+    sy1 = ai.build_system(["성산"])
+    assert "### 성산" in sy1 and "### 제주" not in sy1 and "지점 차이" not in sy1
+    assert all(f"### {n}" in ai.build_system(None) for n in ("제주", "서귀포", "성산", "고산"))
 
 
 def test_normals_notice_only_for_selected():
@@ -358,6 +376,29 @@ def test_station_report_fills_missing_normals():
     by = {x["name"]: x["values"] for x in rep["stations"]}
     assert by["성산"]["일조 시간"]["normal"] is not None and by["제주"]["일조 시간"]["normal"] is not None
     assert rep["normalFilled"] == ["성산 일조 시간"]
+
+
+def test_ai_models_and_settings():
+    """v7.4: 모델 2종 등록, 저장소 없이도 기본 모델(제미나이), 젬마는 키가 없으면 안내 문구"""
+    from weather import ai, settings
+    assert ai.DEFAULT_MODEL in ai.MODELS and len(ai.MODELS) >= 2
+    providers = {v["provider"] for v in ai.MODELS.values()}
+    assert providers == {"vertex", "aistudio"}
+    assert settings.get_model() == ai.DEFAULT_MODEL          # Firestore 꺼짐 → 기본값
+    assert settings.api_key_for(ai.DEFAULT_MODEL) is None    # Vertex AI 는 키 없음
+    gemma = next(k for k, v in ai.MODELS.items() if v["provider"] == "aistudio")
+    assert "AI Studio" in ai.model_label(gemma) and "Vertex AI" in ai.model_label(ai.DEFAULT_MODEL)
+    try:
+        ai.generate("자료", model=gemma, api_key=None)
+        raise AssertionError("키 없이 호출되면 안 됨")
+    except ai.AiError as exc:
+        assert "키" in str(exc)
+    st = settings.ai_status()
+    assert st["current"] == ai.DEFAULT_MODEL and st["key"]["set"] is False and "aistudio" not in str(st["key"].get("tail"))
+    for bad in ("", "짧음", "has space in key 1234567890"):
+        assert not settings.KEY_RE.match(bad), bad
+    assert settings.KEY_RE.match("AIzaSyA1234567890abcdefGHIJKLmnopQRSTU")
+    assert settings.KEY_RE.match("AQ.Ab8RN6Ixyz1234567890abcdefGHIJKLmnop_-")      # 새 형식(점 포함)
 
 
 if __name__ == "__main__":
