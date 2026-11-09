@@ -175,6 +175,14 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
                 report(pct_from + (pct_to - pct_from) * n // len(years), stage,
                        f"{futures[fut]}년 동기간 자료 수신 완료 ({n}/{len(years)})")
 
+    # v7.5: 필요한 연도 자료(해당 연도·최근 5년·평년 30년)를 저장소에서 한 번에 읽어 둠
+    if source == "apihub":
+        from . import archive
+        need_years = set(range(start.year - RECENT_YEARS, end.year + 1))
+        if normal_mode != "skip":
+            need_years |= set(range(NORMAL_START_YEAR - 1, NORMAL_END_YEAR + 2))
+        archive.warm(station_ids, sorted(need_years))
+
     # 1) 해당 연도
     src_name = "저장된 기상청 관측 자료(매일 09시 갱신)" if source == "apihub" else "공공데이터포털"
     report(2, f"해당 연도({start.year}) 관측 자료", f"{src_name} 불러오는 중")

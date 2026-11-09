@@ -125,6 +125,36 @@ def load_year(stn: int, year: int) -> Optional[pd.DataFrame]:
     return None if df is None else df.copy()
 
 
+def warm(station_ids: List[int], years: List[int]) -> int:
+    """조회에 쓸 연도 문서를 한 번에 묶어 읽어 메모리에 올려 둠 (문서마다 따로 읽으면 느림)"""
+    client = store._get_client()
+    if client is None:
+        return 0
+    now = time.time()
+    with _mem_lock:
+        need = [(s, y) for s in station_ids for y in years
+                if not (_mem.get((s, y)) and now - _mem[(s, y)][0] < MEM_TTL_SEC)]
+    if not need:
+        return 0
+    got: Dict[Tuple[int, int], pd.DataFrame] = {}
+    try:
+        refs = [client.collection(COLLECTION).document(_doc_id(s, y)) for s, y in need]
+        for i in range(0, len(refs), 100):
+            for snap in client.get_all(refs[i:i + 100]):
+                if snap.exists:
+                    d = snap.to_dict() or {}
+                    df = _from_payload(d, int(d.get("stn", 0)))
+                    if df is not None:
+                        got[(int(d["stn"]), int(d["year"]))] = df
+    except Exception as exc:
+        log.warning("저장 자료 묶음 읽기 실패: %s", exc)
+        return 0
+    with _mem_lock:
+        for key in need:
+            _mem[key] = (now, got.get(key))
+    return len(got)
+
+
 def save_year(stn: int, year: int, df: pd.DataFrame) -> None:
     df = df[df["date"].map(lambda d: d.year == year)].copy()
     df["stn_id"] = stn
