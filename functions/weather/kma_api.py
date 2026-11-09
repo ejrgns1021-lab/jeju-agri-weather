@@ -778,7 +778,11 @@ def fetch_all_stations(start: dt.date, end: dt.date, api_key: str, source: str =
     선택 지점의 일자료를 순차 조회하여 하나의 표준 DataFrame 으로 결합.
     """
     station_ids = station_ids or list(STATIONS.values())
-    fetch_fn = fetch_apihub_daily if source == "apihub" else fetch_datagokr_daily
+    if source == "apihub":
+        # v7.5: 기상청 API허브 자료는 저장소(매일 09시 갱신)에서 읽음 — 조회할 때 기상청을 부르지 않음
+        from . import archive
+        return archive.read_range(start, end, station_ids, rain_missing_as_zero, api_key, progress)
+    fetch_fn = fetch_datagokr_daily
     frames: List[pd.DataFrame] = []
     errors: Dict[str, str] = {}
     for stn_id in station_ids:
@@ -971,6 +975,18 @@ def normals_for_period(start: dt.date, end: dt.date, api_key: str,
 
     parts: List[pd.DataFrame] = []
     texts: List[str] = []
+    # v7.5: 1년 전체 평년값을 한 번 받아 저장해 두고 필요한 날짜만 사용 (실패하면 기존처럼 기간별 요청)
+    try:
+        full, full_text = fetch_apihub_normals_raw(1, 1, 12, 31, api_key)
+    except WeatherApiError:
+        full, full_text = None, ""
+    if full is not None and not full.empty and "_mmdd" in full.columns:
+        want = {d.month * 100 + d.day for d in pd.date_range(start, end, freq="D")}
+        part = full[full["_mmdd"].isin(want)]
+        if not part.empty:
+            parts.append(part)
+            texts.append(full_text)
+            intervals = []
     for mm1, dd1, mm2, dd2 in intervals:
         norm_part, text = fetch_apihub_normals_raw(mm1, dd1, mm2, dd2, api_key)
         texts.append(text)

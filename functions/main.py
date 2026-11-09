@@ -8,6 +8,8 @@ main.py - Firebase Cloud Functions (Python) 진입점
   jejuprogress: 조회 진행 상황(단계·진행률) 확인, 60초가 넘는 조회는 완료 후 결과도 여기서 전달
   jejuforecast: 대시보드 상단 예보(단기·중기) — 20분간 저장해 재사용
   managelogin / jejumanage : 관리자 화면(/manage.html) — 이용 현황, 저장분 비우기, 연결 점검, AI 모델 선택(v7.4)
+  jejusync   : (예약 작업, v7.5) 매일 09·10·12시 — 최근 관측 자료를 기상청에서 다시 받아 저장소에 덮어쓰기
+               (조회는 저장소에서만 읽으므로 기상청이 느리거나 끊겨도 조회가 됨)
   jejubrief  : [AI 기상분석] 버튼을 누를 때만 — 조회 결과를 간추려 제미나이(Vertex AI)가 농업 관점 해설 작성
 
 두 함수 모두 '호출 가능 함수(callable)' 이며, 화면(public/js/api.js)이 호출합니다.
@@ -23,7 +25,7 @@ import re
 import time
 from typing import Any, Dict
 
-from firebase_functions import https_fn, options
+from firebase_functions import https_fn, options, scheduler_fn
 from firebase_functions.params import SecretParam
 
 from weather import auth
@@ -32,6 +34,7 @@ from weather import forecast as fc
 from weather import ai
 from weather import usage
 from weather import settings
+from weather import archive
 from weather.kma_api import WeatherApiError, WeatherApiTimeoutError
 from weather.pipeline import InputError, run_analysis, validate_request
 
@@ -263,6 +266,18 @@ def jejumanage(req: https_fn.CallableRequest) -> Dict[str, Any]:
         return {"deleted": n}
     if action == "health":
         return {"checks": _health(api_key)}
+    if action == "archive":                 # 관측 자료 저장소 상태 (v7.5)
+        return archive.status()
+    if action == "archiveSync":             # 지금 갱신: 최근 10일 다시 받아 덮어쓰기
+        res = archive.sync_recent(api_key)
+        res["errors"] = {k: _redact(v, api_key) for k, v in res.get("errors", {}).items()}
+        log.info("관리자: 저장소 갱신 %s", res.get("range"))
+        return {"result": res, "status": archive.status()}
+    if action == "archiveFill":             # 빠진 연도 채우기 (약 3분씩, 여러 번 누르면 이어서)
+        res = archive.backfill(api_key, time_budget=170)
+        res["errors"] = {k: _redact(v, api_key) for k, v in res.get("errors", {}).items()}
+        log.info("관리자: 저장소 채우기 %s건, 남은 %s건", res.get("filled"), res.get("left"))
+        return {"result": res, "status": archive.status()}
     if action == "ai":                      # AI 모델 선택·키 상태 (키 값은 보내지 않음)
         return settings.ai_status()
     if action in ("aiModel", "aiKey"):
@@ -344,3 +359,23 @@ def _health(api_key: str) -> list:
     current = settings.get_model()
     results.append({"name": "현재 AI 기상분석 모델", "ok": True, "detail": ai.model_label(current), "sec": 0})
     return results
+
+
+# ---------------------------------------------------------------------
+# 예약 작업 (v7.5): 매일 09:05 · 10:05 · 12:05 (한국 시간)
+#   오늘 갱신이 이미 성공했으면 건너뛰고, 실패했으면 다음 시각에 다시 시도.
+#   남는 시간에는 아직 저장되지 않은 과거 연도를 채움.
+# ---------------------------------------------------------------------
+@scheduler_fn.on_schedule(schedule="5 9,10,12 * * *", timezone=scheduler_fn.Timezone("Asia/Seoul"),
+                          secrets=[KMA_API_KEY], memory=options.MemoryOption.GB_1, cpu=1, timeout_sec=540,
+                          max_instances=1)
+def jejusync(event: scheduler_fn.ScheduledEvent) -> None:
+    api_key = (KMA_API_KEY.value or "").strip()
+    if not api_key:
+        log.error("저장소 갱신: 기상청 API 키 없음")
+        return
+    try:
+        out = archive.scheduled(api_key)
+        log.info("저장소 갱신: %s", _redact(json.dumps(out, ensure_ascii=False, default=str), api_key)[:800])
+    except Exception as exc:
+        log.error("저장소 갱신 실패: %s", _redact(repr(exc), api_key))
