@@ -92,11 +92,12 @@ firebase emulators:start --only functions,hosting
 2. 테스트 배포: `dev`에 올리면 GitHub Actions가 자동 실행 (수동: Cloud Shell에서 `bash scripts/deploy-preview.sh`)
    - 서버 함수는 `logindev / jejuweatherdev / jejuprogressdev`(codebase `dev`)로 따로 배포, 웹페이지는 Hosting 임시 채널 `preview-test`(7일 만료)
    - **라이브 사이트·라이브 함수는 변경되지 않음**
-3. 프리뷰 주소에서 확인·승인 후에만 `dev` → `main` 병합, 그 다음 Actions의 '라이브 배포 (main, 수동)' 실행
+3. 프리뷰 주소에서 확인·승인 후에만 `dev` → `main` PR을 Merge → 라이브 자동 배포
 
 ## 자동 배포 (GitHub Actions) — Cloud Shell 없이 배포
 - **프리뷰**: `dev` 브랜치에 올리면 자동 실행 → 저장소 **Actions** 탭의 '프리뷰 배포 (dev)' 결과 화면에 프리뷰 주소 표시
-- **라이브**: 자동 실행 없음. 승인 후 `main` 병합 → Actions 탭 → '라이브 배포 (main, 수동)' → Run workflow → `DEPLOY` 입력
+- **라이브**: `dev` → `main` PR을 사용자가 Merge(승인)하면 자동 실행 (다시 배포: Actions 탭 → '라이브 배포 (main)' → Run workflow → `DEPLOY` 입력)
+- `main`은 보호 규칙으로 PR을 거쳐야만 변경 가능
 - 두 작업 모두 백엔드 테스트가 실패하면 배포하지 않음
 
 ### 처음 한 번: 배포용 서비스 계정 키 등록

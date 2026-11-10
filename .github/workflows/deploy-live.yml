@@ -1,11 +1,14 @@
-# 라이브(실제 서비스) 배포 — 자동 실행 없음. 승인 후 main 병합이 끝난 뒤 깃허브 Actions 화면에서 직접 실행
-name: 라이브 배포 (main, 수동)
+# 라이브(실제 서비스) 배포 — 사용자가 PR을 승인(Merge)해 main에 들어오면 자동 실행
+# 필요하면 Actions 화면에서 직접 다시 실행도 가능 (DEPLOY 입력)
+name: 라이브 배포 (main)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       confirm:
-        description: "라이브에 배포하려면 DEPLOY 를 입력하세요"
+        description: "라이브에 다시 배포하려면 DEPLOY 를 입력하세요"
         required: true
 
 concurrency:
@@ -14,7 +17,7 @@ concurrency:
 
 jobs:
   live:
-    if: github.ref == 'refs/heads/main' && inputs.confirm == 'DEPLOY'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.confirm == 'DEPLOY')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -41,6 +44,7 @@ jobs:
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
+          if [ -z "$SA_JSON" ]; then echo "::error::깃허브 Secret FIREBASE_SERVICE_ACCOUNT 가 없습니다 (README 의 자동 배포 설정 참고)"; exit 1; fi
           printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
 
@@ -48,3 +52,8 @@ jobs:
         run: |
           cd functions && python -m venv venv && ./venv/bin/pip install -q -r requirements.txt && cd ..
           firebase deploy --project jeju-agri-weather --force --non-interactive
+
+      - name: 라이브 주소
+        run: |
+          echo "### 라이브 배포 완료" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://jeju-agri-weather.web.app" >> "$GITHUB_STEP_SUMMARY"
