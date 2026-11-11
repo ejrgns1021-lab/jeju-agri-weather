@@ -14,7 +14,6 @@ const NORMAL_MODES = [
   ["compute", "과거 30년 실측 계산", "느림 · 첫 조회 1~3분"],
   ["skip", "평년 비교 생략", ""],
 ];
-const SOURCES = [["apihub", "기상청 API허브"], ["datagokr", "공공데이터포털"]];
 // 화면 표시용: 지표별 아이콘·색상 계열 (계산과 무관)
 const METRIC_VIEW = {
   "평균 기온": { icon: "thermometer", kind: "temp", tone: "avg", primary: "diff" },
@@ -176,12 +175,6 @@ function buildSettings() {
     el("span", { class: "option-ui" }, el("span", { class: "option-dot" }),
       el("span", { class: "option-text" }, el("strong", { text: label }), hint ? el("small", { text: hint }) : null)))));
 
-  const source = prefs.source || "apihub";
-  $("source-list").replaceChildren(...SOURCES.map(([v, label]) => el("label", { class: "option" },
-    el("input", { type: "radio", name: "source", value: v, ...(v === source ? { checked: "" } : {}) }),
-    el("span", { class: "option-ui" }, el("span", { class: "option-dot" }),
-      el("span", { class: "option-text" }, el("strong", { text: label }))))));
-
   if (prefs.extreme != null) $("extreme").checked = prefs.extreme;
   if (prefs.rainZero != null) $("rain-zero").checked = prefs.rainZero;
 
@@ -198,7 +191,7 @@ function readQuery() {
     metrics: checked("metric"),
     stations: checked("station"),
     normalMode: checked("normal")[0] || "api",
-    source: checked("source")[0] || "apihub",
+    source: "apihub",   // v7.5.1: 저장된 기상청 자료만 사용 (데이터 소스 선택 화면에서 제거)
     extreme: $("extreme").checked,
     rainZero: $("rain-zero").checked,
   };
