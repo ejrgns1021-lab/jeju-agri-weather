@@ -53,7 +53,6 @@ async function run(getToken, getResult, refresh = false) {
   $("ai-body").innerHTML = '<div class="ai-wait"><span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>'
     + "<p>고른 지점별로 일별 자료에서 가뭄·과습·일조 부족·폭염 등이 며칠간 이어졌는지 찾고 최근 5년과 비교해 종합하는 중입니다. 보통 20~60초 걸립니다.</p></div>";
   $("ai-meta").textContent = "";
-  card.scrollIntoView({ behavior: "smooth", block: "start" });
   try {
     const res = await callFunction("jejubrief", { token: getToken(), query: params, result: pickResult(res0), refresh });
     current = { params, text: res.text };
