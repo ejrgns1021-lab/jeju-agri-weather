@@ -560,6 +560,7 @@ function onBasesChanged() {
   renderComparison();
   try { refreshDekadCompare(); } catch (e) { /* 순별 표 없음 */ }
   extra("sheet", (m) => m.renderReport(res, toast));
+  extra("trend", (m) => m.refresh());   // 그래프 기준선도 함께
 }
 
 function loadExtras() {
