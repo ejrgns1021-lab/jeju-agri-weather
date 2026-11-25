@@ -428,3 +428,16 @@ def test_archive_overwrite_and_read():
     assert float(df2[df2["date"] == day]["avgTa"].iloc[0]) == before + 0.5
     assert len(df2) == 10                                   # 다른 날짜는 그대로 유지
     assert set(["rainDays", "tropicalNights", "stn_name"]) <= set(df2.columns)
+
+
+def test_ai_request_compose():
+    """v7.9: 요청이 없으면 기본 분석과 같고, 있으면 요청이 내용 맨 앞·지시문에 규칙 추가, 길이·제어문자 정리"""
+    from weather import ai
+    sys0, c0 = ai.compose("자료", ["제주"], "")
+    assert sys0 == ai.build_system(["제주"]) and c0.startswith("다음 분석 자료로")
+    sys1, c1 = ai.compose("자료", ["제주"], "마늘 생육 관점에서")
+    assert sys1.startswith(sys0) and "사용자 요청이 있을 때" in sys1
+    assert c1.startswith("[사용자 요청]\n마늘 생육 관점에서") and c1.endswith("자료")
+    assert ai.clean_request("  a\x00b\x07c\n두 줄 ") == "abc\n두 줄"
+    assert len(ai.clean_request("가" * 900)) == ai.REQUEST_MAX
+    assert ai.clean_request(None) == ""
