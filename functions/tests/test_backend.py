@@ -428,3 +428,22 @@ def test_archive_overwrite_and_read():
     assert float(df2[df2["date"] == day]["avgTa"].iloc[0]) == before + 0.5
     assert len(df2) == 10                                   # 다른 날짜는 그대로 유지
     assert set(["rainDays", "tropicalNights", "stn_name"]) <= set(df2.columns)
+
+
+def test_chart_series():
+    """v7.6 그래프: 날짜 수만큼 값, 강수는 누적(감소하지 않음), 평균 기온은 일별 값과 같음"""
+    q = pipeline.validate_request({"start": "2024-06-01", "end": "2024-06-20", "metrics": ["평균 기온", "누적 강수량"],
+                                   "stations": list(STATIONS), "source": "apihub", "normalMode": "api",
+                                   "extreme": False, "rainZero": True})
+    r = pipeline.run_analysis(q, "KEY")
+    ch = r["chart"]
+    assert ch and len(ch["dates"]) == 20
+    rain = ch["metrics"]["누적 강수량"]
+    assert rain["mode"] == "cumulative" and len(rain["cur"]) == 20
+    cur = [v for v in rain["cur"] if v is not None]
+    assert all(b >= a for a, b in zip(cur, cur[1:]))
+    t = ch["metrics"]["평균 기온"]
+    assert t["mode"] == "daily" and t["normal"][0] == 18.0 and t["prev"][0] is not None and t["r5"][0] is not None
+    # 마지막 누적값 = 비교표의 기간 합계와 같아야 함
+    total = float(r["stationReport"]["average"]["누적 강수량"]["cur"])
+    assert abs(cur[-1] - total) < 0.2

@@ -32,11 +32,12 @@
     <details class="changelog">
       <summary>
         <span class="cl-title"><i data-icon="history"></i> 업데이트 내역</span>
-        <span class="cl-now">현재 v7.5.1</span>
+        <span class="cl-now">현재 v7.6</span>
         <i data-icon="chevron-down" class="cl-chev"></i>
       </summary>
       <ol class="cl-list">
-        <li class="cl-new"><b>v7.5.1</b><span>데이터 소스 선택 항목 정리(저장된 기상청 자료 사용), AI 기상분석을 눌러도 화면이 아래로 내려가지 않게</span></li>
+        <li class="cl-new"><b>v7.6</b><span><strong>그래프</strong> 탭: 본년과 전년·최근 3년·최근 5년·평년을 지표별로 한눈에 비교, 기간 동안의 날짜별 흐름(강수·일조는 누적)을 선 그래프로</span></li>
+        <li><b>v7.5.1</b><span>데이터 소스 선택 항목 정리(저장된 기상청 자료 사용), AI 기상분석을 눌러도 화면이 아래로 내려가지 않게</span></li>
         <li><b>v7.5</b><span><strong>빠른 조회</strong>: 관측 자료를 미리 저장해 두고 매일 09시에 기상청 자료로 갱신 — 조회할 때 기상청을 기다리지 않아 빨라지고, 기상청 연결이 불안정해도 조회 가능</span></li>
         <li><b>v7.4</b><span><strong>AI 기상분석</strong>: 순별 대신 일별로 가뭄·과습·일조 부족 등이 정확히 며칠간(몇 월 며칠~며칠) 이어졌는지 표시, 고른 지점만 분석, 젬마(Gemma) 모델 추가</span></li>
         <li><b>v7.3.1</b><span>사이트 이름을 <strong>제주 농업 기상계산기</strong>로 변경</span></li>
@@ -254,13 +255,15 @@
 
           <section class="card">
             <div class="tabs" role="tablist">
-              <button type="button" class="tab active" data-tab="sheet"><i data-icon="file-text" class="ic-sm"></i>보고서 표</button>
+              <button type="button" class="tab active" data-tab="graph"><i data-icon="bar-chart" class="ic-sm"></i>그래프</button>
+              <button type="button" class="tab" data-tab="sheet"><i data-icon="file-text" class="ic-sm"></i>보고서 표</button>
               <button type="button" class="tab" data-tab="station"><i data-icon="map-pin" class="ic-sm"></i>지점별</button>
               <button type="button" class="tab" data-tab="daily"><i data-icon="calendar" class="ic-sm"></i>일별</button>
               <button type="button" class="tab" data-tab="yearly"><i data-icon="history" class="ic-sm"></i>연도별 동기간</button>
               <button type="button" class="tab" data-tab="diag"><i data-icon="file-text" class="ic-sm"></i>진단</button>
             </div>
-            <div class="tab-panel" data-panel="sheet"><div id="report-panel" class="report-panel"></div></div>
+            <div class="tab-panel" data-panel="graph"><div id="graph-panel" class="graph-panel"></div></div>
+            <div class="tab-panel" data-panel="sheet" hidden><div id="report-panel" class="report-panel"></div></div>
             <div class="tab-panel" data-panel="station" hidden><div id="station-table"></div></div>
             <div class="tab-panel" data-panel="daily" hidden>
               <label class="field inline"><span>지표</span><select id="daily-metric"></select></label>

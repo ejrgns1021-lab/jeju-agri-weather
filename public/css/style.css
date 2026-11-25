@@ -658,3 +658,59 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
 .rep-table td.rep-cur { font-weight: 700; }
 .rep-tools { align-items: center; }
 @media (max-width: 600px) { .rep-opts input[type="text"], .rep-title-f input[type="text"] { width: 100%; } .rep-opts .field.inline { width: 100%; } }
+
+/* ---------------------------------------------------------------- 그래프 탭 (v7.6) */
+:root {
+  --g-cur: #2a78d6; --g-prev: #eb6834; --g-r3: #1baf7a; --g-r5: #eda100; --g-normal: #7d8580;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --g-cur: #3987e5; --g-prev: #d95926; --g-r3: #199e70; --g-r5: #c98500; --g-normal: #9aa39e; }
+}
+.graph-panel { display: grid; gap: 14px; }
+.g-head { margin: 0; }
+.g-section { display: grid; gap: 10px; }
+.g-title { margin: 0; font-size: 15px; color: var(--ink); }
+.g-grid-cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.g-card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px 8px; background: var(--surface); }
+.g-card h4 { margin: 0 0 6px; font-size: 14px; color: var(--ink-2); }
+.g-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.g-svg text { font-family: inherit; }
+.g-grid { stroke: var(--line); stroke-width: 1; }
+.g-tick { font-size: 11px; fill: var(--muted); }
+.g-label { font-size: 12.5px; fill: var(--ink-2); }
+.g-label.strong { font-weight: 700; fill: var(--ink); }
+.g-value { font-size: 12.5px; fill: var(--ink); font-variant-numeric: tabular-nums; }
+.g-track { stroke: var(--line); stroke-width: 1; }
+.g-mark.g-cur { color: var(--g-cur); } .g-mark.g-prev { color: var(--g-prev); } .g-mark.g-r3 { color: var(--g-r3); }
+.g-mark.g-r5 { color: var(--g-r5); } .g-mark.g-normal { color: var(--g-normal); }
+.g-bar { fill: currentColor; }
+.g-dot { fill: currentColor; stroke: var(--surface); stroke-width: 2; }
+.g-note { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.g-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0; }
+.g-row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.g-summary { margin: 0; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.g-smooth { font-size: 13px; }
+.g-wrap { display: grid; gap: 6px; min-width: 0; }
+.g-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink-2); }
+.g-leg { display: inline-flex; align-items: center; gap: 6px; }
+.g-sw { display: inline-block; width: 18px; height: 0; border-top: 3px solid currentColor; border-radius: 2px; }
+.g-sw.dash { border-top-style: dashed; }
+.g-sw.g-cur { color: var(--g-cur); } .g-sw.g-prev { color: var(--g-prev); } .g-sw.g-r3 { color: var(--g-r3); }
+.g-sw.g-r5 { color: var(--g-r5); } .g-sw.g-normal { color: var(--g-normal); }
+.g-plot { position: relative; touch-action: pan-y; }
+.g-path { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.g-path.main { stroke-width: 2.75; }
+.g-path.dash { stroke-dasharray: 6 4; }
+.g-path.g-cur, .g-hdot.g-cur { stroke: var(--g-cur); } .g-path.g-prev, .g-hdot.g-prev { stroke: var(--g-prev); }
+.g-path.g-r3, .g-hdot.g-r3 { stroke: var(--g-r3); } .g-path.g-r5, .g-hdot.g-r5 { stroke: var(--g-r5); }
+.g-path.g-normal, .g-hdot.g-normal { stroke: var(--g-normal); }
+.g-hdot { fill: var(--surface); stroke-width: 2.5; }
+.g-cross { stroke: var(--line-strong); stroke-width: 1; }
+.g-tip { position: absolute; top: 8px; min-width: 176px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface);
+  border: 1px solid var(--line-strong); box-shadow: var(--shadow); font-size: 12.5px; color: var(--ink); pointer-events: none; z-index: 2; }
+.g-tip-date { font-weight: 700; margin-bottom: 4px; }
+.g-tip-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; }
+.g-tip-row b { font-variant-numeric: tabular-nums; }
+.g-tip-foot { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); color: var(--ink-2); }
+.g-chips .chip { margin: 0; }
+.g-chips .chip.active { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
