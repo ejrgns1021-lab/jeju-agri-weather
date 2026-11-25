@@ -32,12 +32,11 @@
     <details class="changelog">
       <summary>
         <span class="cl-title"><i data-icon="history"></i> 업데이트 내역</span>
-        <span class="cl-now">현재 v7.7</span>
+        <span class="cl-now">현재 v7.6</span>
         <i data-icon="chevron-down" class="cl-chev"></i>
       </summary>
       <ol class="cl-list">
-        <li class="cl-new"><b>v7.7</b><span><strong>한눈에 보는 기상 비교</strong>: 기상 비교표 위 접는 칸 — 지표마다 금년 막대와 전년(┃)·평년(◆) 위치, 전년·평년 대비 차이 배지</span></li>
-        <li><b>v7.6</b><span><strong>그래프로 보기</strong>: 대시보드 아래 접는 칸 — 평균·최고·최저 기온, 강수량, 일조 시간을 하나씩 날짜별 그래프로 보고 본년을 전년·평년 등과 비교(값·편차), Ctrl+휠 확대·축소와 기간 이동 막대</span></li>
+        <li class="cl-new"><b>v7.6</b><span><strong>그래프로 보기</strong>: 대시보드 아래 접는 칸 — 평균기온·최고·최저기온·누적강수량·일조시간의 날짜별 추이를 금년·전년·평년 선으로 비교(누적강수량은 일 강수 막대 함께), 확대·축소와 기간 이동</span></li>
         <li><b>v7.5.1</b><span>데이터 소스 선택 항목 정리(저장된 기상청 자료 사용), AI 기상분석을 눌러도 화면이 아래로 내려가지 않게</span></li>
         <li><b>v7.5</b><span><strong>빠른 조회</strong>: 관측 자료를 미리 저장해 두고 매일 09시에 기상청 자료로 갱신 — 조회할 때 기상청을 기다리지 않아 빨라지고, 기상청 연결이 불안정해도 조회 가능</span></li>
         <li><b>v7.4</b><span><strong>AI 기상분석</strong>: 순별 대신 일별로 가뭄·과습·일조 부족 등이 정확히 며칠간(몇 월 며칠~며칠) 이어졌는지 표시, 고른 지점만 분석, 젬마(Gemma) 모델 추가</span></li>
@@ -221,15 +220,8 @@
           <!-- 그래프 (v7.6.1): 평소에는 한 줄로 접혀 있고, 누르면 아래로 펼쳐짐 -->
           <details class="card graph-fold" id="graph-fold" hidden>
             <summary><i data-icon="bar-chart"></i><span class="gf-title">그래프로 보기</span>
-              <span class="gf-sub">지표별 날짜별 흐름 · 본년과 전년·평년 비교 · 확대·이동</span><i data-icon="chevron-down" class="chev"></i></summary>
+              <span class="gf-sub">조회 기간 날짜별 추이 · 금년·전년·평년 비교</span><i data-icon="chevron-down" class="chev"></i></summary>
             <div id="graph-panel" class="graph-panel"></div>
-          </details>
-
-          <!-- 한눈에 보는 기상 비교 (v7.7): 지표별 가로 불릿 차트, 접기·펼치기 (기본 펼침) -->
-          <details class="card graph-fold glance-card" id="glance-card" open hidden>
-            <summary><i data-icon="layers"></i><span class="gf-title">한눈에 보는 기상 비교</span>
-              <span class="gf-sub">금년 막대와 전년·평년 위치를 지표별로</span><i data-icon="chevron-down" class="chev"></i></summary>
-            <div id="glance-body" class="glance-body"></div>
           </details>
 
           <section class="card">
