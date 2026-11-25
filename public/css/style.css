@@ -659,7 +659,7 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
 .rep-tools { align-items: center; }
 @media (max-width: 600px) { .rep-opts input[type="text"], .rep-title-f input[type="text"] { width: 100%; } .rep-opts .field.inline { width: 100%; } }
 
-/* ---------------------------------------------------------------- 그래프 탭 (v7.6) */
+/* ---------------------------------------------------------------- 그래프로 보기 (v7.6) */
 :root {
   --g-cur: #2a78d6; --g-prev: #eb6834; --g-r3: #1baf7a; --g-r5: #eda100; --g-normal: #7d8580;
 }
@@ -667,24 +667,10 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
   :root { --g-cur: #3987e5; --g-prev: #d95926; --g-r3: #199e70; --g-r5: #c98500; --g-normal: #9aa39e; }
 }
 .graph-panel { display: grid; gap: 14px; }
-.g-head { margin: 0; }
-.g-section { display: grid; gap: 10px; }
-.g-title { margin: 0; font-size: 15px; color: var(--ink); }
-.g-grid-cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-.g-card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px 8px; background: var(--surface); }
-.g-card h4 { margin: 0 0 6px; font-size: 14px; color: var(--ink-2); }
 .g-svg { display: block; width: 100%; height: auto; overflow: visible; }
 .g-svg text { font-family: inherit; }
 .g-grid { stroke: var(--line); stroke-width: 1; }
 .g-tick { font-size: 11px; fill: var(--muted); }
-.g-label { font-size: 12.5px; fill: var(--ink-2); }
-.g-label.strong { font-weight: 700; fill: var(--ink); }
-.g-value { font-size: 12.5px; fill: var(--ink); font-variant-numeric: tabular-nums; }
-.g-track { stroke: var(--line); stroke-width: 1; }
-.g-mark.g-cur { color: var(--g-cur); } .g-mark.g-prev { color: var(--g-prev); } .g-mark.g-r3 { color: var(--g-r3); }
-.g-mark.g-r5 { color: var(--g-r5); } .g-mark.g-normal { color: var(--g-normal); }
-.g-bar { fill: currentColor; }
-.g-dot { fill: currentColor; stroke: var(--surface); stroke-width: 2; }
 .g-note { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
 .g-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0; }
 .g-row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
@@ -714,3 +700,37 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
 .g-tip-foot { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); color: var(--ink-2); }
 .g-chips .chip { margin: 0; }
 .g-chips .chip.active { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+
+/* 대시보드 아래 접는 한 줄 */
+.graph-fold { padding: 0; }
+.graph-fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 14px 18px; font-weight: 700; color: var(--ink); }
+.graph-fold > summary::-webkit-details-marker { display: none; }
+.graph-fold > summary .ic { color: var(--brand); }
+.graph-fold .gf-sub { font-weight: 400; font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.graph-fold .chev { margin-left: auto; color: var(--muted); transition: transform .2s; flex: none; }
+.graph-fold[open] .chev { transform: rotate(180deg); }
+.graph-fold[open] > summary { border-bottom: 1px solid var(--line); }
+.graph-fold .graph-panel { padding: 14px 18px 16px; }
+@media (max-width: 600px) { .graph-fold .gf-sub { display: none; } }
+.g-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.g-seg button { font-size: 13px; }
+.g-base select { height: 32px; min-height: 0; width: auto; font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); }
+.g-main { cursor: crosshair; }
+.g-main.dragging { cursor: grabbing; }
+.g-zero { stroke: var(--line-strong); stroke-width: 1.5; }
+.g-barfill.g-cur { fill: var(--g-cur); }
+.g-box { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: currentColor; }
+.g-box.g-barfill.g-cur { color: var(--g-cur); }
+/* 편차 막대: 기온은 높음=주황·낮음=파랑, 강수는 많음=파랑·적음=갈색, 일조는 많음=노랑·적음=회색 */
+.g-pos.k-temp { fill: #e06a3a; color: #e06a3a; } .g-neg.k-temp { fill: #2a78d6; color: #2a78d6; }
+.g-pos.k-rain { fill: #2a78d6; color: #2a78d6; } .g-neg.k-rain { fill: #b8792a; color: #b8792a; }
+.g-pos.k-sun { fill: #e0a000; color: #e0a000; } .g-neg.k-sun { fill: #7d8580; color: #7d8580; }
+.g-navrow { margin-top: 4px; }
+.g-nav { touch-action: none; user-select: none; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.g-nav-line { fill: none; stroke: var(--g-cur); stroke-width: 1.25; opacity: .7; }
+.g-nav-shade { fill: var(--ink); opacity: .08; }
+.g-nav-win { fill: transparent; stroke: var(--brand); stroke-width: 2; }
+.g-zoomrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.g-zoombtns { display: flex; gap: 6px; }
+.g-zoombtns .btn { min-width: 36px; justify-content: center; font-weight: 700; }
+.g-range { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }

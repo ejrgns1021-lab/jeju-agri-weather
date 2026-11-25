@@ -3,8 +3,9 @@
 chart.py - 그래프 탭용 일별 흐름 자료 (v7.6)
 
 조회 기간의 날짜마다 '선택 지점 평균' 값을 본년·전년·최근 3년·최근 5년·평년으로 정리합니다.
-  · 기온          : 일별 값 (화면에서 7일 이동평균으로 부드럽게 볼 수 있음)
-  · 강수량·일조·일수 : 기간 시작부터의 누적값 (부족·과다가 쌓이는 모습이 한눈에 보임)
+  · 모두 일별 값 (강수량은 그날 내린 비, 일조는 그날 일조시간) — v7.6.1, 누적 없음
+  · 조회에서 고른 지표와 관계없이 평균·최고·최저 기온, 강수량, 일조 시간 5가지를 모두 보냄
+    (그래프에서 지표를 따로따로 눌러 볼 수 있도록. 강우일수·열대야 일수는 하루 단위로는 0/1이라 제외)
 이미 받아 둔(메모리·저장소) 자료를 다시 쓰므로 기상청 추가 호출이 없습니다.
 """
 from __future__ import annotations
@@ -92,10 +93,10 @@ def build_chart(start: dt.date, end: dt.date, metric_names: List[str],
 
     prev_year = start.year - 1
     metrics: Dict[str, Any] = {}
-    for name in metric_names:
+    names = [n for n, m in METRICS.items() if not m.get("derived_from")]
+    for name in names:
         meta = METRICS[name]
         col = meta["col"]
-        cumulative = meta["agg"] == "sum"
         cur = _by_offset(current_daily, start, n, col)
         prev = years_series([prev_year], col, 1)
         r3 = years_series(recent_years[:3], col, 2)
@@ -109,9 +110,9 @@ def build_chart(start: dt.date, end: dt.date, metric_names: List[str],
             else:   # 평년값 API 에 없는 지표·실측 계산 모드: 1991~2020 실측 평균 (20개 연도 이상)
                 normal = years_series(normal_years, col, 20)
         series = {"cur": cur, "prev": prev, "r3": r3, "r5": r5, "normal": normal}
-        if cumulative:
-            series = {k: _cumulate(v) for k, v in series.items()}
-        metrics[name] = {"unit": meta["unit"], "mode": "cumulative" if cumulative else "daily",
+        if np.isnan(cur).all():
+            continue
+        metrics[name] = {"unit": meta["unit"], "mode": "daily", "kind": meta["kind"],
                          **{k: [_r(x) for x in v] for k, v in series.items()}}
     return {"dates": [d.isoformat() for d in dates], "prevYear": prev_year,
             "recent3Range": f"{min(recent_years[:3])}~{max(recent_years[:3])}",

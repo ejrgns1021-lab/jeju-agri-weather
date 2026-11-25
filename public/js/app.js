@@ -32,7 +32,7 @@ const MAX_DAYS = 366;
 
 const $ = (id) => document.getElementById(id);
 // 부가 기능(예보·AI 분석)은 따로 불러옴 — 브라우저 차단 기능이 파일 하나를 막아도 로그인·조회는 항상 동작
-const extras = { forecast: null, brief: null, sheet: null, graph: null };
+const extras = { forecast: null, brief: null, sheet: null, trend: null };
 const extra = (name, fn) => { try { const m = extras[name]; if (m) fn(m); } catch (e) { /* 부가 기능 오류는 무시 */ } };
 const DEFAULT_LAYOUT = "combined"; // 기본 표 구성: 한 칸에 편차 (비율%)
 const state = { result: null, layout: DEFAULT_LAYOUT };
@@ -350,7 +350,7 @@ function renderResult(res) {
   renderBaseChips($("base-chips"));
   renderMetricCards(res);
   extra("sheet", (m) => m.renderReport(res, toast));
-  extra("graph", (m) => m.renderGraph(res));
+  extra("trend", (m) => m.setResult(res));
 
   $("cmp-caption").textContent = `${s.aggDesc}. 결측 지점은 제외하고 나머지 지점 평균으로 산출. ` +
     "대비(편차)=해당 연도−기준값, 대비(비율)=해당 연도÷기준값×100(%). '-' 는 자료 없음.";
@@ -493,7 +493,6 @@ function setupTabs() {
   document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
     document.querySelectorAll(".tab-panel").forEach((pnl) => { pnl.hidden = pnl.dataset.panel !== tab.dataset.tab; });
-    if (tab.dataset.tab === "graph" && state.result && state.result.ok) extra("graph", (m) => m.renderGraph(state.result));  // 숨겨져 있던 동안 폭을 몰라 다시 그림
   }));
 }
 
@@ -561,7 +560,7 @@ function onBasesChanged() {
   renderComparison();
   try { refreshDekadCompare(); } catch (e) { /* 순별 표 없음 */ }
   extra("sheet", (m) => m.renderReport(res, toast));
-  extra("graph", (m) => m.renderGraph(res));
+  extra("trend", (m) => m.refresh());
 }
 
 function loadExtras() {
@@ -570,9 +569,10 @@ function loadExtras() {
     extras.sheet = m;
     if (state.result && state.result.ok) m.renderReport(state.result, toast);
   }).catch(() => { /* 보고서 표 파일을 못 불러와도 나머지는 정상 */ });
-  import("./graph.js").then((m) => {
-    extras.graph = m;
-    if (state.result && state.result.ok) m.renderGraph(state.result);
+  import("./trend.js").then((m) => {
+    extras.trend = m;
+    m.setup();
+    if (state.result && state.result.ok) m.setResult(state.result);
   }).catch(() => { /* 그래프 파일을 못 불러와도 나머지는 정상 */ });
   import("./forecast.js").then((m) => {
     extras.forecast = m;

@@ -33,7 +33,7 @@ NORMALS_COLLECTION = "kma_normals"
 FINALIZED_AFTER_DAYS = 11          # 매일 09시에 최근 10일을 다시 받아 덮어쓰므로(v7.5), 그보다 지난 구간만 '확정'(영구 저장)
 RECENT_TTL_SEC = 6 * 3600          # 확정 전 최근 자료·결과는 6시간 동안만 재사용
 RESULTS_COLLECTION = "results"
-RESULT_SCHEMA = 8                  # v7.6: 그래프 탭 일별 흐름(chart) 추가 / v7.5: 저장소 자료 기준일(dataAsOf) 추가 (v7.3: 최근 3년·보고서 표)
+RESULT_SCHEMA = 9                  # v7.6.1: 그래프 자료 일별·5개 지표 / v7.6: 그래프(chart) 추가 / v7.5: 저장소 자료 기준일(dataAsOf) 추가 (v7.3: 최근 3년·보고서 표)
 KST = dt.timezone(dt.timedelta(hours=9))
 
 _client: Any = None
