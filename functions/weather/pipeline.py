@@ -26,7 +26,6 @@ from .kma_api import (
 )
 from .dekad import build_dekad_tables
 from .station_dekad import build_station_brief, build_station_report
-from .chart import build_chart
 from .processing import (
     NORMAL_END_YEAR,
     NORMAL_START_YEAR,
@@ -322,14 +321,6 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     except Exception:  # pragma: no cover - 방어용
         station_report = None
 
-    # 그래프 탭용 일별 흐름 (v7.6) — 실패해도 다른 결과에 영향 없음
-    chart = None
-    try:
-        chart = build_chart(start, end, metric_names, current_daily, fetch_period, recent_years,
-                            normal_mode, normal_daily_api, normal_years)
-    except Exception:  # pragma: no cover - 방어용
-        chart = None
-
     daily_raw_text = ""
     if diag_future is not None:
         try:
@@ -400,7 +391,6 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         "dekad": dekad,
         "stationBrief": station_brief,
         "stationReport": station_report,
-        "chart": chart,
         "diagnostics": {
             "dailyRawText": daily_raw_text[:6000],
             "dailyColumns": detected_columns(daily_raw_text, DEFAULT_DAILY_COLS) if daily_raw_text else [],
