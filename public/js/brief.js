@@ -31,7 +31,6 @@ function mdToHtml(md) {
 
 function setButton(state) {
   const btn = $("ai-btn");
-  $("ai-run").disabled = state === "busy";
   btn.disabled = state === "busy";
   btn.classList.toggle("busy", state === "busy");
   $("ai-btn-label").textContent = state === "busy" ? "AI가 분석 중…" : "AI 기상분석";
@@ -43,32 +42,22 @@ function pickResult(res) {
   return { params: res.params, summary: res.summary, stationBrief: res.stationBrief, daily: res.daily };
 }
 
-// v7.9: 요청 예시 — 누르면 입력칸에 채움(고쳐 쓸 수 있음)
-const EXAMPLES = [
-  ["마늘·양파 생육", "이번 기간 기상을 마늘·양파 생육 관점에서 분석해 줘"],
-  ["감귤 착색·품질", "이번 기간 기상이 감귤 착색과 당도·품질에 미칠 영향을 중심으로 분석해 줘"],
-  ["월동채소 관리", "월동채소(양배추·브로콜리·무·당근) 관리 관점에서 주의할 점을 정리해 줘"],
-  ["보고서 5줄 요약", "보고서에 넣을 수 있게 핵심만 5줄 이내로 요약해 줘"],
-];
-
 async function run(getToken, getResult, refresh = false) {
   const res0 = getResult();
   const params = res0 && res0.params;
   if (!params || busy) return;
-  const prompt = $("ai-prompt").value.trim();
   busy = true;
   setButton("busy");
   const card = $("ai-card");
   card.hidden = false;
   $("ai-body").innerHTML = '<div class="ai-wait"><span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>'
-    + `<p>${prompt ? "적어 주신 요청에 맞춰 조회 자료를 분석하는 중입니다." : "고른 지점별로 일별 자료에서 가뭄·과습·일조 부족·폭염 등이 며칠간 이어졌는지 찾고 최근 5년과 비교해 종합하는 중입니다."} 보통 20~60초 걸립니다.</p></div>`;
+    + "<p>고른 지점별로 일별 자료에서 가뭄·과습·일조 부족·폭염 등이 며칠간 이어졌는지 찾고 최근 5년과 비교해 종합하는 중입니다. 보통 20~60초 걸립니다.</p></div>";
   $("ai-meta").textContent = "";
   try {
-    const res = await callFunction("jejubrief", { token: getToken(), query: params, result: pickResult(res0), refresh, prompt });
+    const res = await callFunction("jejubrief", { token: getToken(), query: params, result: pickResult(res0), refresh });
     current = { params, text: res.text };
     $("ai-body").innerHTML = mdToHtml(res.text);
-    $("ai-meta").textContent = (res.prompt ? `요청: "${res.prompt.length > 60 ? `${res.prompt.slice(0, 60)}…` : res.prompt}" · ` : "기본 분석 · ")
-      + `${res.period} · ${res.cached ? "저장된 분석" : "새 분석"} ${res.createdAt} · ${res.modelLabel || `${res.model} (Vertex AI)`}`
+    $("ai-meta").textContent = `${res.period} · ${res.cached ? "저장된 분석" : "새 분석"} ${res.createdAt} · ${res.modelLabel || `${res.model} (Vertex AI)`}`
       + " · AI가 작성한 참고 자료이므로 중요한 판단에는 표의 수치를 함께 확인하세요.";
   } catch (e) {
     const msg = e instanceof ApiError ? e.message : String(e);
@@ -83,27 +72,11 @@ async function run(getToken, getResult, refresh = false) {
 export function resetAi(hasResult) {
   $("ai-btn").hidden = !hasResult;
   $("ai-card").hidden = true;
-  $("ai-body").innerHTML = "";
-  $("ai-meta").textContent = "";
-  current = null;     // 적어 둔 요청 문구는 그대로 둠(다른 기간에도 같은 요청으로 분석하기 쉽게)
+  current = null;
 }
 
 export function setupAi(getToken, getResult) {
-  // [AI 기상분석] 버튼은 요청 입력칸을 열고, [분석하기]를 눌러야 분석 (비워 두면 기본 분석)
-  $("ai-btn").addEventListener("click", () => {
-    $("ai-card").hidden = false;
-    $("ai-prompt").focus({ preventScroll: true });
-  });
-  $("ai-run").addEventListener("click", () => run(getToken, getResult, false));
-  $("ai-prompt").addEventListener("keydown", (ev) => {   // Ctrl(⌘)+Enter 로도 분석
-    if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); run(getToken, getResult, false); }
-  });
-  $("ai-examples").replaceChildren(...EXAMPLES.map(([label, text]) => {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "chip ai-ex"; b.textContent = label; b.title = text;
-    b.addEventListener("click", () => { $("ai-prompt").value = text; $("ai-prompt").focus({ preventScroll: true }); });
-    return b;
-  }));
+  $("ai-btn").addEventListener("click", () => run(getToken, getResult, false));
   $("ai-refresh").addEventListener("click", () => run(getToken, getResult, true));
   $("ai-copy").addEventListener("click", async () => {
     if (!current) return;

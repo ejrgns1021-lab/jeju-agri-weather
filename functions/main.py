@@ -19,7 +19,6 @@ main.py - Firebase Cloud Functions (Python) 진입점
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
@@ -196,10 +195,7 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
     usage.record("brief", data.get("cid"))
     rkey = store.result_key(query)
     model = settings.get_model()            # 관리자 화면에서 고른 모델 (기본: 제미나이)
-    request = ai.clean_request(data.get("prompt"))   # v7.9: 직원이 적은 요청(없으면 기본 분석)
     akey = f"{rkey}_ai{ai.PROMPT_VERSION}_{model}"
-    if request:                             # 요청이 다르면 따로 저장 (같은 요청은 저장분 재사용)
-        akey += "_p" + hashlib.sha1(request.encode("utf-8")).hexdigest()[:12]
     final = store.is_finalized(query["end"].strftime("%Y%m%d"))
     if not data.get("refresh"):
         saved = store.ai_get(akey)
@@ -213,8 +209,7 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
         result = sent if ai.valid_result(sent, query) else (store.result_get(rkey) or run_analysis(query, api_key))
         digest = ai.build_digest(result)
         log.info("AI 분석 자료 준비 %.1f초 (%d자, 화면 전달=%s)", time.time() - t0, len(digest), result is sent)
-        text = ai.generate(digest, model=model, api_key=settings.api_key_for(model), stations=ai.digest_stations(result),
-                           request=request)
+        text = ai.generate(digest, model=model, api_key=settings.api_key_for(model), stations=ai.digest_stations(result))
         log.info("AI 분석 완료 %.1f초 (%d자)", time.time() - t0, len(text))
     except ai.AiError as exc:
         raise _fail(https_fn.FunctionsErrorCode.FAILED_PRECONDITION, str(exc))
@@ -224,7 +219,7 @@ def jejubrief(req: https_fn.CallableRequest) -> Dict[str, Any]:
         log.error("AI 분석 오류: %s", _redact(repr(exc), api_key))
         raise _fail(https_fn.FunctionsErrorCode.INTERNAL, "AI 분석 중 오류가 발생했습니다.")
     out = {"text": text, "model": model, "modelLabel": ai.model_label(model), "createdAt": time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + 9 * 3600)),
-           "period": f"{query['start']:%Y-%m-%d} ~ {query['end']:%Y-%m-%d}", "prompt": request}
+           "period": f"{query['start']:%Y-%m-%d} ~ {query['end']:%Y-%m-%d}"}
     store.ai_put(akey, out, final=final)
     return out
 
