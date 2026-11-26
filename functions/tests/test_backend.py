@@ -428,3 +428,26 @@ def test_archive_overwrite_and_read():
     assert float(df2[df2["date"] == day]["avgTa"].iloc[0]) == before + 0.5
     assert len(df2) == 10                                   # 다른 날짜는 그대로 유지
     assert set(["rainDays", "tropicalNights", "stn_name"]) <= set(df2.columns)
+
+
+def test_monthly_tables():
+    """v7.6 월별: 달마다 한 줄(일부 달 표시), 월 합계를 더하면 기간 합계, 지점별 표에 지점·평균 열"""
+    from weather.dekad import month_periods
+    ps = month_periods(dt.date(2024, 10, 26), dt.date(2024, 12, 5))
+    assert [p["label"] for p in ps] == ["2024년 10월", "2024년 11월", "2024년 12월"]
+    assert [p["partial"] for p in ps] == [True, False, True] and ps[1]["days"] == 30
+    q = pipeline.validate_request({"start": "2024-10-26", "end": "2024-12-05", "metrics": ["평균 기온", "누적 강수량"],
+                                   "stations": list(STATIONS), "source": "apihub", "normalMode": "api",
+                                   "extreme": False, "rainZero": True})
+    r = pipeline.run_analysis(q, "KEY")
+    mo = r["monthly"]
+    assert mo and mo["count"] == 3 and mo["overview"]["columns"][0] == "월"
+    rain_col = mo["overview"]["columns"].index("누적 강수량(mm)")
+    total = sum(float(row[rain_col]) for row in mo["overview"]["rows"])
+    assert abs(total - float(r["stationReport"]["average"]["누적 강수량"]["cur"])) < 0.3
+    assert "(일부)" in mo["overview"]["rows"][0][2]
+    st = mo["stations"]["평균 기온"]
+    assert st["columns"][:3] == ["월", "기간", "일수"] and "제주" in st["columns"] and "선택 지점 평균" in st["columns"]
+    assert set(mo["byMetric"]["누적 강수량"]) == {"combined", "all"}
+    # 순별은 그대로
+    assert r["dekad"]["overview"]["columns"][0] == "순"

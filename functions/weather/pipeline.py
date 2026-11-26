@@ -24,7 +24,7 @@ from .kma_api import (
     fetch_apihub_daily_text,
     normals_for_period,
 )
-from .dekad import build_dekad_tables
+from .dekad import build_dekad_tables, build_station_month_tables, month_periods
 from .station_dekad import build_station_brief, build_station_report
 from .processing import (
     NORMAL_END_YEAR,
@@ -298,6 +298,22 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     except Exception as exc:  # pragma: no cover - 방어용
         notices.append({"level": "info", "text": f"순별 집계를 만들지 못했습니다: {exc}"})
 
+    # 월별 집계 (v7.6) — 순별과 같은 방식(같은 날짜 범위로 비교), 실패해도 다른 결과에 영향 없음
+    monthly = None
+    try:
+        report(98, "월별 집계", "월 단위로 나누어 비교하는 중")
+        mp = month_periods(start, end)
+        monthly = build_dekad_tables(start, end, metric_names, extreme, current_daily, fetch_period, recent_years,
+                                     normal_mode, normal_daily_api, normal_years, normal_from_years,
+                                     periods=mp, col="월",
+                                     note="월별: 조회 기간에 일부만 포함된 달은 '(일부)'로 표시하며, 비교 연도도 같은 날짜 범위로만 집계합니다. "
+                                          "기온은 월 평균, 강수량·일조 시간·일수는 월 합계입니다.")
+        if monthly is not None:
+            monthly["stations"] = build_station_month_tables(current_df, metric_names, extreme, mp,
+                                                             {sid: n for n, sid in STATIONS.items() if sid in station_ids})
+    except Exception as exc:  # pragma: no cover - 방어용
+        notices.append({"level": "info", "text": f"월별 집계를 만들지 못했습니다: {exc}"})
+
     # 지점별 해당 연도 vs 최근 5년 (AI 기상분석용, v7.1) — 이미 받아 둔 자료 재사용, 실패해도 다른 결과에 영향 없음
     station_brief = None
     try:
@@ -389,6 +405,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         "normal30": yearly_table(normal_yearly_df, metric_names),
         "raw": table_json(format_report(raw_df, decimals=1, int_cols=["지점번호"])),
         "dekad": dekad,
+        "monthly": monthly,
         "stationBrief": station_brief,
         "stationReport": station_report,
         "diagnostics": {
