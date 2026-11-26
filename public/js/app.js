@@ -355,7 +355,7 @@ function renderResult(res) {
     "대비(편차)=해당 연도−기준값, 대비(비율)=해당 연도÷기준값×100(%). '-' 는 자료 없음.";
   $("layout-switch").replaceChildren(...res.layouts.map(([key, label]) => el("button", {
     type: "button", "data-layout": key, text: label, role: "tab",
-    onclick: () => { state.layout = key; renderComparison(); refreshDekadCompare(); },
+    onclick: () => { state.layout = key; renderComparison(); refreshDekadCompare(); refreshMonthly(); },
   })));
   renderComparison();
 
@@ -375,7 +375,9 @@ function renderResult(res) {
   sel.onchange = drawDaily;
   drawDaily();
 
-  const yearly = [el("p", { class: "muted small", text: "전년 및 최근 5년 각 연도의 동일 기간 제주 전체 집계값" }),
+  renderMonthly(res, tag);
+
+  const yearly = [el("p", { class: "muted small", text: "본년(해당 연도)·전년 및 최근 5년 각 연도의 동일 기간 선택 지점 평균 집계값" }),
     res.recent ? tableBlock(res.recent, `최근5년_${tag}`) : el("p", { class: "muted", text: "최근 5년 자료가 없습니다." })];
   if (res.normal30) {
     yearly.push(el("p", { class: "muted small gap", text: "평년(1991~2020) 각 연도의 동일 기간 집계값" }),
@@ -496,6 +498,46 @@ function setupTabs() {
 }
 
 // ---------------------------------------------------------------- 시작
+// ---------------------------------------------------------------- 월별 탭 (v7.6)
+function renderMonthly(res, tag) {
+  const mo = res.monthly;
+  const panel = document.querySelector('.tab-panel[data-panel="monthly"]');
+  if (!mo || !mo.overview || !mo.overview.rows.length) {
+    $("monthly-note").textContent = "이 조회 결과에는 월별 자료가 없습니다. 다시 조회하면 표시됩니다.";
+    ["monthly-overview", "monthly-compare", "monthly-stations"].forEach((id) => $(id).replaceChildren());
+    $("monthly-metric").replaceChildren();
+    return;
+  }
+  $("monthly-note").textContent = mo.note || "";
+  $("monthly-overview").replaceChildren(tableBlock(mo.overview, `월별요약_${tag}`));
+  const metrics = res.params.metrics.filter((m) => mo.byMetric && mo.byMetric[m]);
+  const sel = $("monthly-metric");
+  const prev = sel.value;
+  sel.replaceChildren(...metrics.map((m) => el("option", { value: m, text: m })));
+  if (metrics.includes(prev)) sel.value = prev;
+  sel.onchange = () => drawMonthly(res, tag);
+  drawMonthly(res, tag);
+  if (panel) panel.dataset.ready = "1";
+}
+
+function drawMonthly(res, tag) {
+  const mo = res.monthly;
+  const m = $("monthly-metric").value;
+  if (!mo || !m || !mo.byMetric[m]) return;
+  const lay = state.layout === "combined" ? "combined" : "all";
+  $("monthly-compare").replaceChildren(tableBlock(filterBases(mo.byMetric[m][lay]), `월별_${m}_${tag}`));
+  const st = mo.stations && mo.stations[m];
+  $("monthly-stations").replaceChildren(st ? tableBlock(st, `월별지점_${m}_${tag}`) : el("p", { class: "muted small", text: "지점별 월 값이 없습니다." }));
+}
+
+/** 표 구성·비교 기준이 바뀌면 월별 비교표도 다시 그림 */
+function refreshMonthly() {
+  const res = state.result;
+  if (!res || !res.ok || !res.monthly) return;
+  const p = res.params;
+  drawMonthly(res, `${compact(p.start)}_${compact(p.end)}`);
+}
+
 // ---------------------------------------------------------------- 전체 결과 엑셀 저장
 async function exportAll() {
   const res = state.result;
@@ -513,6 +555,11 @@ async function exportAll() {
     { name: "연도별 동기간", table: res.recent },
     { name: "평년 30년", table: res.normal30 },
   ];
+  if (res.monthly) {
+    sheets.push({ name: "월별 요약", table: res.monthly.overview });
+    p.metrics.filter((m) => res.monthly.byMetric[m]).forEach((m) => sheets.push({ name: `월별_${m}`, table: filterBases(res.monthly.byMetric[m].all) }));
+    p.metrics.filter((m) => res.monthly.stations && res.monthly.stations[m]).forEach((m) => sheets.push({ name: `월별지점_${m}`, table: res.monthly.stations[m] }));
+  }
   if (res.dekad) {
     sheets.push({ name: "순별 요약", table: res.dekad.overview });
     p.metrics.filter((m) => res.dekad.byMetric[m]).forEach((m) => sheets.push({ name: `순별_${m}`, table: filterBases(res.dekad.byMetric[m].all) }));
@@ -558,6 +605,7 @@ function onBasesChanged() {
   renderMetricCards(res);
   renderComparison();
   try { refreshDekadCompare(); } catch (e) { /* 순별 표 없음 */ }
+  try { refreshMonthly(); } catch (e) { /* 월별 표 없음 */ }
   extra("sheet", (m) => m.renderReport(res, toast));
 }
 

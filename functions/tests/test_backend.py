@@ -129,7 +129,7 @@ def test_full_pipeline():
     assert abs(float(row["평년대비(비율)"]) - round(cur / nor * 100, 1)) < 1e-9
     assert all(not any("풍속" in c for c in t["columns"]) for t in [cmp_all, res["station"], res["raw"]])
     assert set(res["daily"]) == set(METRICS)
-    assert res["recent"] and len(res["recent"]["rows"]) == 5
+    assert res["recent"] and len(res["recent"]["rows"]) == 6          # v7.6: 본년 + 최근 5년
     assert res["station"]["rows"][-1][0] == "제주 전체 평균"
 
 
@@ -162,7 +162,8 @@ def test_rain_days():
     res = pipeline.run_analysis(req, "K")
     row = dict(zip(res["comparison"]["all"]["columns"], res["comparison"]["all"]["rows"][0]))
     assert row["평년 평균"] != "-", row
-    assert any("강우일수" in n["text"] and "30년 실측" in n["text"] for n in res["notices"]), res["notices"]
+    # v7.6: 30년 실측 대체 계산이 정상으로 끝나면 안내 문구는 띄우지 않음
+    assert not any("강우일수" in n["text"] for n in res["notices"]), res["notices"]
 
 
 def test_dekad_periods():
@@ -428,3 +429,118 @@ def test_archive_overwrite_and_read():
     assert float(df2[df2["date"] == day]["avgTa"].iloc[0]) == before + 0.5
     assert len(df2) == 10                                   # 다른 날짜는 그대로 유지
     assert set(["rainDays", "tropicalNights", "stn_name"]) <= set(df2.columns)
+
+
+def test_monthly_tables():
+    """v7.6 월별: 달마다 한 줄(일부 달 표시), 월 합계를 더하면 기간 합계, 지점별 표에 지점·평균 열"""
+    from weather.dekad import month_periods
+    ps = month_periods(dt.date(2024, 10, 26), dt.date(2024, 12, 5))
+    assert [p["label"] for p in ps] == ["2024년 10월", "2024년 11월", "2024년 12월"]
+    assert [p["partial"] for p in ps] == [True, False, True] and ps[1]["days"] == 30
+    q = pipeline.validate_request({"start": "2024-10-26", "end": "2024-12-05", "metrics": ["평균 기온", "누적 강수량"],
+                                   "stations": list(STATIONS), "source": "apihub", "normalMode": "api",
+                                   "extreme": False, "rainZero": True})
+    r = pipeline.run_analysis(q, "KEY")
+    mo = r["monthly"]
+    assert mo and mo["count"] == 3 and mo["overview"]["columns"][0] == "월"
+    rain_col = mo["overview"]["columns"].index("누적 강수량(mm)")
+    total = sum(float(row[rain_col]) for row in mo["overview"]["rows"])
+    assert abs(total - float(r["stationReport"]["average"]["누적 강수량"]["cur"])) < 0.3
+    assert "(일부)" in mo["overview"]["rows"][0][2]
+    st = mo["stations"]["평균 기온"]
+    assert st["columns"][:3] == ["월", "기간", "일수"] and "제주" in st["columns"] and "선택 지점 평균" in st["columns"]
+    assert set(mo["byMetric"]["누적 강수량"]) == {"combined", "all"}
+    # 순별은 그대로
+    assert r["dekad"]["overview"]["columns"][0] == "순"
+
+
+def test_normals_station_gap_filled_before_average():
+    """v7.6: 평년값 API에 일부 지점(성산·고산 일조)만 빠져도 평년 평균은 선택한 모든 지점 평년의 평균이어야 함"""
+    orig = _normal_text
+
+    def no_ss(mm1, dd1, mm2, dd2):
+        out = []
+        for line in orig(mm1, dd1, mm2, dd2).split("\n"):
+            parts = line.split()
+            if len(parts) == len(DEFAULT_NORMAL_COLS) and parts[1] in ("188", "185"):
+                parts[DEFAULT_NORMAL_COLS.index("SS")] = "-9"
+                line = " ".join(parts)
+            out.append(line)
+        return "\n".join(out)
+
+    globals()["_normal_text"] = no_ss
+    kma_api.fetch_apihub_normals_raw.cache_clear()     # 앞 시험에서 기억해 둔 평년값 대신 새 응답 사용
+    try:
+        q = pipeline.validate_request({"start": "2023-06-01", "end": "2023-06-30", "metrics": ["일조 시간", "평균 기온"],
+                                       "stations": list(STATIONS), "source": "apihub", "normalMode": "api",
+                                       "extreme": False, "rainZero": True})
+        r = pipeline.run_analysis(q, "KEY")
+    finally:
+        globals()["_normal_text"] = orig
+        kma_api.fetch_apihub_normals_raw.cache_clear()
+    sr = r["stationReport"]
+    for m in ("일조 시간", "평균 기온"):
+        st = [s["values"][m]["normal"] for s in sr["stations"]]
+        assert all(v is not None for v in st)
+        assert abs(sr["average"][m]["normal"] - sum(st) / len(st)) <= 0.11, m
+    assert set(sr["normalFilled"]) == {"성산 일조 시간", "고산 일조 시간"}
+    mo = r["monthly"]["byMetric"]["일조 시간"]["all"]
+    assert abs(float(mo["rows"][0][mo["columns"].index("평년 평균")]) - sr["average"]["일조 시간"]["normal"]) <= 0.11
+
+
+def test_monthly_matches_direct_calculation():
+    """월별 값을 일별 원자료에서 직접 다시 계산해 대조: 기온=일평균의 평균, 강수=일합의 합, 최근5년=연도별 월값의 평균"""
+    q = pipeline.validate_request({"start": "2024-06-16", "end": "2024-08-10", "metrics": ["평균 기온", "누적 강수량", "열대야 일수"],
+                                   "stations": ["제주", "고산"], "source": "apihub", "normalMode": "skip",
+                                   "extreme": False, "rainZero": True})
+    r = pipeline.run_analysis(q, "KEY")
+    mo = r["monthly"]
+
+    def daily(y, s, e):
+        df, _ = kma_api.fetch_all_stations(s.replace(year=y), e.replace(year=y), "KEY", "apihub", [184, 185], True)
+        return df
+
+    months = [(dt.date(2024, 6, 16), dt.date(2024, 6, 30)), (dt.date(2024, 7, 1), dt.date(2024, 7, 31)), (dt.date(2024, 8, 1), dt.date(2024, 8, 10))]
+    cols = mo["overview"]["columns"]
+    for k, (s, e) in enumerate(months):
+        d = daily(2024, s, e)
+        per_day = d.groupby("date")[["avgTa", "sumRn", "tropicalNights"]].mean()
+        row = mo["overview"]["rows"][k]
+        assert abs(float(row[cols.index("평균 기온(℃)")]) - per_day["avgTa"].mean()) < 0.06
+        assert abs(float(row[cols.index("누적 강수량(mm)")]) - per_day["sumRn"].sum()) < 0.06
+        assert abs(float(row[cols.index("열대야 일수(일)")]) - per_day["tropicalNights"].sum()) < 0.06
+        # 최근 5년: 연도마다 같은 날짜 범위의 월값을 구한 뒤 평균 (일자료를 한데 섞어 평균내지 않음)
+        r5 = [daily(y, s, e).groupby("date")["sumRn"].mean().sum() for y in range(2019, 2024)]
+        tb = mo["byMetric"]["누적 강수량"]["all"]
+        assert abs(float(tb["rows"][k][tb["columns"].index("최근 5년 평균")]) - sum(r5) / 5) < 0.06
+    # 월 합계를 더하면 기간 합계, 월 평균기온을 일수로 가중평균하면 기간 평균
+    rain_total = sum(float(x[cols.index("누적 강수량(mm)")]) for x in mo["overview"]["rows"])
+    assert abs(rain_total - r["stationReport"]["average"]["누적 강수량"]["cur"]) < 0.2
+    days = [15, 31, 10]
+    wmean = sum(float(x[cols.index("평균 기온(℃)")]) * dd for x, dd in zip(mo["overview"]["rows"], days)) / sum(days)
+    assert abs(wmean - r["stationReport"]["average"]["평균 기온"]["cur"]) < 0.06
+
+
+def test_no_info_notice_for_normal_fallbacks():
+    """평년 보완·대체 계산이 정상으로 끝나면 안내 문구를 띄우지 않음"""
+    q = pipeline.validate_request({"start": "2024-07-01", "end": "2024-07-31", "metrics": ["평균 기온", "강우일수", "열대야 일수"],
+                                   "stations": list(STATIONS), "source": "apihub", "normalMode": "api",
+                                   "extreme": False, "rainZero": True})
+    r = pipeline.run_analysis(q, "KEY")
+    texts = " ".join(n["text"] for n in r["notices"])
+    assert "대체 계산했습니다" not in texts and "지점 평균에 넣었습니다" not in texts, texts
+    assert r["stationReport"]["average"]["강우일수"]["normal"] is not None
+
+
+def test_yearly_table_includes_current_year():
+    """연도별 동기간 표: 맨 위 본년 줄(값=비교표 해당 연도), 다음 전년, 최근 5년 6줄 전체"""
+    q = pipeline.validate_request({"start": "2024-05-01", "end": "2024-05-31", "metrics": ["평균 기온", "누적 강수량"],
+                                   "stations": list(STATIONS), "source": "apihub", "normalMode": "skip",
+                                   "extreme": False, "rainZero": True})
+    r = pipeline.run_analysis(q, "KEY")
+    t = r["recent"]
+    assert t["columns"][:3] == ["구분", "연도", "기간"]
+    assert [row[1] for row in t["rows"]] == ["2024", "2023", "2022", "2021", "2020", "2019"]
+    assert t["rows"][0][0] == "본년" and t["rows"][1][0] == "전년"
+    i = t["columns"].index("누적 강수량(mm)")
+    assert abs(float(t["rows"][0][i]) - r["stationReport"]["average"]["누적 강수량"]["cur"]) < 0.06

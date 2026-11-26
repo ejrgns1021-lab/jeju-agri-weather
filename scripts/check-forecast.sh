@@ -4,7 +4,7 @@
 #   URL=https://jeju-agri-weather.web.app bash scripts/check-forecast.sh   # 라이브
 set -euo pipefail
 cd "$(dirname "$0")/../functions"
-URL="${URL:-https://jeju-agri-weather--preview-test-h21yjnk4.web.app}"
+URL="${URL:-https://jeju-agri-weather--preview-test-sbptx43y.web.app}"
 P="$(gcloud secrets versions access latest --secret=APP_PASSWORD --project jeju-agri-weather)"
 TOKEN="$(P="$P" python3 -c "import os,sys; sys.path.insert(0,'.'); from weather import auth; print(auth.issue_token(os.environ['P'])[0])")"
 curl -s -X POST "$URL/api/jejuforecast" -H 'Content-Type: application/json' \

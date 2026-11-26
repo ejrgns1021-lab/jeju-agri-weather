@@ -7,7 +7,7 @@
 #   2) 웹페이지를 Hosting 임시 채널(preview-test)에 올리고, /api/* 를 dev 함수로 연결
 #
 # 사용:  bash scripts/deploy-preview.sh            (Cloud Shell, dev 브랜치에서)
-# 결과:  https://jeju-agri-weather--preview-test-XXXX.web.app  (7일 후 자동 만료)
+# 결과:  https://jeju-agri-weather--preview-test-XXXX.web.app  (30일 후 자동 만료 — 그 전에 다시 배포하면 같은 주소 유지)
 # =====================================================================
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -56,7 +56,7 @@ functions-dev/venv/bin/pip install -q -r functions-dev/requirements.txt
 firebase deploy --only functions:dev --project "$PROJECT" --force --non-interactive
 
 echo "▶ 2/2 웹페이지 임시 채널 배포 ($CHANNEL)"
-firebase hosting:channel:deploy "$CHANNEL" --project "$PROJECT" --expires 7d --non-interactive --json > channel.json
+firebase hosting:channel:deploy "$CHANNEL" --project "$PROJECT" --expires 30d --non-interactive --json > channel.json
 URL="$("$PYTHON" -c "import json; r=json.load(open('channel.json'))['result']; print(next(iter(r.values()))['url'])")"
 echo "PREVIEW_URL=$URL"
 [ -n "${GITHUB_OUTPUT:-}" ] && echo "url=$URL" >> "$GITHUB_OUTPUT" || true

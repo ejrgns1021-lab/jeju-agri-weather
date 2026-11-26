@@ -63,6 +63,49 @@ def dekad_periods(start: dt.date, end: dt.date) -> List[Dict[str, Any]]:
     return out
 
 
+def month_periods(start: dt.date, end: dt.date) -> List[Dict[str, Any]]:
+    """조회 기간과 겹치는 월 목록 (v7.6, 기간 밖 날짜는 잘라내고 '일부'로 표시)"""
+    out: List[Dict[str, Any]] = []
+    if start is None or end is None or start > end:
+        return out
+    y, m = start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        full_s, full_e = dt.date(y, m, 1), dt.date(y, m, calendar.monthrange(y, m)[1])
+        s, e = max(full_s, start), min(full_e, end)
+        out.append({
+            "key": f"{y}-{m:02d}", "label": f"{y}년 {m}월", "start": s, "end": e,
+            "days": (e - s).days + 1, "fullDays": (full_e - full_s).days + 1, "partial": (s, e) != (full_s, full_e),
+            "range": f"{m}/{s.day}~{m}/{e.day}",
+        })
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return out
+
+
+def build_station_month_tables(station_df: pd.DataFrame, metric_names: List[str], extreme: bool,
+                               periods: List[Dict[str, Any]], station_names: Dict[int, str]) -> Dict[str, Dict[str, Any]]:
+    """지표별 '월 × 지점' 값 표 (+ 선택 지점 평균) — 일별 탭의 월 단위판"""
+    out: Dict[str, Dict[str, Any]] = {}
+    if station_df is None or station_df.empty:
+        return out
+    stations = [sid for sid in station_names if sid in set(station_df["stn_id"])]
+    daily_mean = jeju_daily_mean(station_df)
+    for n in metric_names:
+        rows = []
+        for p in periods:
+            row: Dict[str, Any] = {"월": p["label"], "기간": p["range"], "일수": f"{p['days']}일" + (" (일부)" if p["partial"] else "")}
+            for sid in stations:
+                sub = _slice(station_df[station_df["stn_id"] == sid], p["start"], p["end"])
+                row[station_names[sid]] = aggregate_period(sub, [n], extreme).get(n, float("nan"))
+            if len(stations) > 1:
+                row["선택 지점 평균"] = aggregate_period(_slice(daily_mean, p["start"], p["end"]), [n], extreme).get(n, float("nan"))
+            rows.append(row)
+        df = format_report(pd.DataFrame(rows), decimals=1)
+        out[n] = {"columns": [str(c) for c in df.columns], "rows": [[str(v) for v in r] for r in df.itertuples(index=False, name=None)]}
+    return out
+
+
 def _slice(daily: pd.DataFrame, s: dt.date, e: dt.date) -> pd.DataFrame:
     if daily is None or daily.empty or "date" not in daily.columns:
         return pd.DataFrame(columns=daily.columns if daily is not None else [])
@@ -83,13 +126,16 @@ def build_dekad_tables(
     normal_daily: Optional[pd.DataFrame],
     normal_years: List[int],
     normal_from_years: List[str],
+    periods: Optional[List[Dict[str, Any]]] = None,
+    col: str = "순",
+    note: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    순별 비교표 생성.
+    순별 비교표 생성. periods·col·note 를 주면 같은 방식으로 월별 등 다른 구간에도 사용(v7.6 월별).
       normal_daily      : 평년값 API 일별 평년(제주 전체) — 해당 날짜로 바로 잘라 씀
       normal_from_years : 평년을 30년 실측에서 계산해야 하는 지표 (compute 모드면 전체 지표)
     """
-    periods = dekad_periods(start, end)
+    periods = periods if periods is not None else dekad_periods(start, end)
     if not periods or current_daily is None or current_daily.empty:
         return None
 
@@ -145,7 +191,7 @@ def build_dekad_tables(
         days_txt = f"{p['days']}일" + (" (일부)" if p["partial"] else "")
         for layout in ("combined", "all"):
             f = format_comparison_for_display(cmp, start.year, layout_mode=layout, decimals=1)
-            layout_cols.setdefault(layout, ["순", "기간", "일수"] + [c for c in f.columns if c != "구분"])
+            layout_cols.setdefault(layout, [col, "기간", "일수"] + [c for c in f.columns if c != "구분"])
             for _, row in f.iterrows():
                 name = next((n for n in metric_names if str(row["구분"]).startswith(n)), None)
                 if name is None:
@@ -153,9 +199,9 @@ def build_dekad_tables(
                 r = row.to_dict()
                 r.pop("구분", None)
                 by_metric_rows[name].append(pd.DataFrame([{
-                    "_layout": layout, "순": p["label"], "기간": p["range"], "일수": days_txt, **r}]))
+                    "_layout": layout, col: p["label"], "기간": p["range"], "일수": days_txt, **r}]))
 
-        ov = {"순": p["label"], "기간": p["range"], "일수": days_txt}
+        ov = {col: p["label"], "기간": p["range"], "일수": days_txt}
         for n in metric_names:
             ov[f"{n}({METRICS[n]['unit']})"] = current.get(n, float("nan"))
         overview_rows.append(ov)
@@ -178,6 +224,6 @@ def build_dekad_tables(
         "byMetric": by_metric,
         "count": len(periods),
         "partial": [p["label"] for p in periods if p["partial"]],
-        "note": "상순 1~10일 · 중순 11~20일 · 하순 21일~말일. 조회 기간에 일부만 포함된 순은 '(일부)'로 표시하며, "
-                "비교 연도도 같은 날짜 범위로만 집계합니다.",
+        "note": note or ("상순 1~10일 · 중순 11~20일 · 하순 21일~말일. 조회 기간에 일부만 포함된 순은 '(일부)'로 표시하며, "
+                         "비교 연도도 같은 날짜 범위로만 집계합니다."),
     }

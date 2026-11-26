@@ -52,4 +52,4 @@ jobs:
         run: |
           echo "### 프리뷰 주소" >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "(7일 후 만료 · 라이브 사이트와 별개)" >> "$GITHUB_STEP_SUMMARY"
+          echo "(30일 후 만료 · 라이브 사이트와 별개)" >> "$GITHUB_STEP_SUMMARY"

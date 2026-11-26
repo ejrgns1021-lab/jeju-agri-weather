@@ -24,8 +24,8 @@ from .kma_api import (
     fetch_apihub_daily_text,
     normals_for_period,
 )
-from .dekad import build_dekad_tables
-from .station_dekad import build_station_brief, build_station_report
+from .dekad import build_dekad_tables, build_station_month_tables, month_periods
+from .station_dekad import build_station_brief, build_station_report, fill_station_normals
 from .processing import (
     NORMAL_END_YEAR,
     NORMAL_START_YEAR,
@@ -233,11 +233,18 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     normal_yearly_df = pd.DataFrame()
     normal_daily_api: Optional[pd.DataFrame] = None   # 순별 집계용: 평년값 API 일별 평년(제주 전체)
     normal_station_df: Optional[pd.DataFrame] = None  # AI 분석용: 평년값 API 지점별 일평년
+    normal_filled: List[str] = []                     # 지점 평년을 30년 실측으로 채운 항목 (v7.6)
     normal_from_years: List[str] = []                 # 순별 집계용: 30년 실측으로 평년을 계산한 지표
     if normal_mode == "api":
         report(58, "평년값(1991~2020)", "기상청 평년값 API 조회 중")
         normal_df, unmapped, normal_raw_text = normals_for_period(start, end, api_key, station_ids)
         unmapped = [n for n in unmapped if n in metric_names]   # 선택하지 않은 지표(예: 강우일수·열대야 일수)는 알림 대상에서 제외
+        # v7.6: 일부 지점만 평년이 없는 지표(성산·고산 일조 등)는 그 지점 평년을 30년 실측으로 채운 뒤 지점 평균을 냄
+        #       (채우지 않으면 평년 평균이 있는 지점만으로 계산돼 금년(전 지점 평균)과 지점 구성이 달라짐)
+        normal_df, normal_filled = fill_station_normals(
+            normal_df, start, end, metric_names, station_ids, fetch_period, normal_years,
+            prefetch_years=lambda ys: prefetch(ys, 60, 62, "평년 보완: 평년값이 없는 지점(1991~2020 실측)"))
+        # (안내 문구는 띄우지 않음 — 정상 보완이므로. 보고서 표 각주(normalFilled)로만 표시)
         normal_daily_api = jeju_daily_mean(normal_df)
         normal_station_df = normal_df
         normal_vals = aggregate_period(normal_daily_api, metric_names, extreme=False)
@@ -258,9 +265,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
             else:
                 normal_note = f"평년값 API + 30년 실측 보완 ({NORMAL_START_YEAR}~{NORMAL_END_YEAR})"
             unmapped = [n for n in fallback if pd.isna(normal_vals.get(n, float("nan")))]
-            if not unmapped:
-                notices.append({"level": "info", "text": "평년값 API 응답에 없는 지표(" + ", ".join(fallback) +
-                                ")는 1991~2020년 30년 실측 자료로 대체 계산했습니다."})
+            # 대체 계산에 성공한 경우는 정상 처리이므로 안내 문구를 띄우지 않음 (실패한 지표만 아래에서 경고)
     elif normal_mode == "compute":
         normal_from_years = list(metric_names)
         prefetch(normal_years, 58, 92, "평년: 1991~2020 실측 30년 자료")
@@ -298,6 +303,22 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     except Exception as exc:  # pragma: no cover - 방어용
         notices.append({"level": "info", "text": f"순별 집계를 만들지 못했습니다: {exc}"})
 
+    # 월별 집계 (v7.6) — 순별과 같은 방식(같은 날짜 범위로 비교), 실패해도 다른 결과에 영향 없음
+    monthly = None
+    try:
+        report(98, "월별 집계", "월 단위로 나누어 비교하는 중")
+        mp = month_periods(start, end)
+        monthly = build_dekad_tables(start, end, metric_names, extreme, current_daily, fetch_period, recent_years,
+                                     normal_mode, normal_daily_api, normal_years, normal_from_years,
+                                     periods=mp, col="월",
+                                     note="월별: 조회 기간에 일부만 포함된 달은 '(일부)'로 표시하며, 비교 연도도 같은 날짜 범위로만 집계합니다. "
+                                          "기온은 월 평균, 강수량·일조 시간·일수는 월 합계입니다.")
+        if monthly is not None:
+            monthly["stations"] = build_station_month_tables(current_df, metric_names, extreme, mp,
+                                                             {sid: n for n, sid in STATIONS.items() if sid in station_ids})
+    except Exception as exc:  # pragma: no cover - 방어용
+        notices.append({"level": "info", "text": f"월별 집계를 만들지 못했습니다: {exc}"})
+
     # 지점별 해당 연도 vs 최근 5년 (AI 기상분석용, v7.1) — 이미 받아 둔 자료 재사용, 실패해도 다른 결과에 영향 없음
     station_brief = None
     try:
@@ -318,6 +339,8 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
                                          "r3": _round1(recent3_vals.get(n)), "r5": _round1(recent_vals.get(n)),
                                          "normal": _round1(normal_vals.get(n))} for n in metric_names}
         station_report["units"] = {n: METRICS[n]["unit"] for n in metric_names}
+        if normal_filled:   # 위에서 미리 채웠으므로 보고서 표 안내 문구용 목록을 여기서 넘김
+            station_report["normalFilled"] = sorted(set(station_report.get("normalFilled") or []) | set(normal_filled))
     except Exception:  # pragma: no cover - 방어용
         station_report = None
 
@@ -349,8 +372,17 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         if df is None or df.empty:
             return None
         names = [n for n in names if n in df.columns]
-        out = df[["연도", "기간"] + names].rename(columns={n: _metric_label(n) for n in names})
+        head = [c for c in ("구분", "연도", "기간") if c in df.columns]
+        out = df[head + names].rename(columns={n: _metric_label(n) for n in names})
         return table_json(format_report(out, decimals=1, int_cols=["연도"]))
+
+    def with_current_year(df: pd.DataFrame) -> pd.DataFrame:
+        """연도별 동기간 표 맨 위에 본년(해당 연도) 줄 추가 (v7.6) — 값은 비교표의 해당 연도와 같음"""
+        cur = {"연도": start.year, "기간": f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d}"}
+        cur.update({n: current_vals.get(n, float("nan")) for n in metric_names})
+        out = pd.concat([pd.DataFrame([cur]), df], ignore_index=True) if df is not None and not df.empty else pd.DataFrame([cur])
+        out.insert(0, "구분", ["본년" if y == start.year else ("전년" if y == prev_year else "") for y in out["연도"]])
+        return out
 
     raw_cols = ["date", "stn_id", "stn_name"] + [METRICS[n]["col"] for n in metric_names]
     # 원자료 표도 일자별로 지점 표시 순서(제주 → 서귀포 → 성산 → 고산)에 맞춤 (값은 그대로, 행 순서만 정렬)
@@ -385,10 +417,11 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         "basis": table_json(basis.astype(str)),
         "station": table_json(station_table),
         "daily": daily_tables,
-        "recent": yearly_table(recent_df, metric_names),
+        "recent": yearly_table(with_current_year(recent_df), metric_names),
         "normal30": yearly_table(normal_yearly_df, metric_names),
         "raw": table_json(format_report(raw_df, decimals=1, int_cols=["지점번호"])),
         "dekad": dekad,
+        "monthly": monthly,
         "stationBrief": station_brief,
         "stationReport": station_report,
         "diagnostics": {
