@@ -162,7 +162,8 @@ def test_rain_days():
     res = pipeline.run_analysis(req, "K")
     row = dict(zip(res["comparison"]["all"]["columns"], res["comparison"]["all"]["rows"][0]))
     assert row["평년 평균"] != "-", row
-    assert any("강우일수" in n["text"] and "30년 실측" in n["text"] for n in res["notices"]), res["notices"]
+    # v7.6: 30년 실측 대체 계산이 정상으로 끝나면 안내 문구는 띄우지 않음
+    assert not any("강우일수" in n["text"] for n in res["notices"]), res["notices"]
 
 
 def test_dekad_periods():
@@ -518,3 +519,14 @@ def test_monthly_matches_direct_calculation():
     days = [15, 31, 10]
     wmean = sum(float(x[cols.index("평균 기온(℃)")]) * dd for x, dd in zip(mo["overview"]["rows"], days)) / sum(days)
     assert abs(wmean - r["stationReport"]["average"]["평균 기온"]["cur"]) < 0.06
+
+
+def test_no_info_notice_for_normal_fallbacks():
+    """평년 보완·대체 계산이 정상으로 끝나면 안내 문구를 띄우지 않음"""
+    q = pipeline.validate_request({"start": "2024-07-01", "end": "2024-07-31", "metrics": ["평균 기온", "강우일수", "열대야 일수"],
+                                   "stations": list(STATIONS), "source": "apihub", "normalMode": "api",
+                                   "extreme": False, "rainZero": True})
+    r = pipeline.run_analysis(q, "KEY")
+    texts = " ".join(n["text"] for n in r["notices"])
+    assert "대체 계산했습니다" not in texts and "지점 평균에 넣었습니다" not in texts, texts
+    assert r["stationReport"]["average"]["강우일수"]["normal"] is not None

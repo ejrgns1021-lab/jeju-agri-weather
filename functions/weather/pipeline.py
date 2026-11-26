@@ -244,9 +244,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         normal_df, normal_filled = fill_station_normals(
             normal_df, start, end, metric_names, station_ids, fetch_period, normal_years,
             prefetch_years=lambda ys: prefetch(ys, 60, 62, "평년 보완: 평년값이 없는 지점(1991~2020 실측)"))
-        if normal_filled:
-            notices.append({"level": "info", "text": "평년값 API에 없는 " + ", ".join(normal_filled) +
-                            " 평년은 1991~2020년 같은 날짜 실측 평균으로 채워 지점 평균에 넣었습니다."})
+        # (안내 문구는 띄우지 않음 — 정상 보완이므로. 보고서 표 각주(normalFilled)로만 표시)
         normal_daily_api = jeju_daily_mean(normal_df)
         normal_station_df = normal_df
         normal_vals = aggregate_period(normal_daily_api, metric_names, extreme=False)
@@ -267,9 +265,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
             else:
                 normal_note = f"평년값 API + 30년 실측 보완 ({NORMAL_START_YEAR}~{NORMAL_END_YEAR})"
             unmapped = [n for n in fallback if pd.isna(normal_vals.get(n, float("nan")))]
-            if not unmapped:
-                notices.append({"level": "info", "text": "평년값 API 응답에 없는 지표(" + ", ".join(fallback) +
-                                ")는 1991~2020년 30년 실측 자료로 대체 계산했습니다."})
+            # 대체 계산에 성공한 경우는 정상 처리이므로 안내 문구를 띄우지 않음 (실패한 지표만 아래에서 경고)
     elif normal_mode == "compute":
         normal_from_years = list(metric_names)
         prefetch(normal_years, 58, 92, "평년: 1991~2020 실측 30년 자료")
