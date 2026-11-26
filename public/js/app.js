@@ -377,7 +377,7 @@ function renderResult(res) {
 
   renderMonthly(res, tag);
 
-  const yearly = [el("p", { class: "muted small", text: "전년 및 최근 5년 각 연도의 동일 기간 제주 전체 집계값" }),
+  const yearly = [el("p", { class: "muted small", text: "본년(해당 연도)·전년 및 최근 5년 각 연도의 동일 기간 선택 지점 평균 집계값" }),
     res.recent ? tableBlock(res.recent, `최근5년_${tag}`) : el("p", { class: "muted", text: "최근 5년 자료가 없습니다." })];
   if (res.normal30) {
     yearly.push(el("p", { class: "muted small gap", text: "평년(1991~2020) 각 연도의 동일 기간 집계값" }),

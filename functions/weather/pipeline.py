@@ -372,8 +372,17 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         if df is None or df.empty:
             return None
         names = [n for n in names if n in df.columns]
-        out = df[["연도", "기간"] + names].rename(columns={n: _metric_label(n) for n in names})
+        head = [c for c in ("구분", "연도", "기간") if c in df.columns]
+        out = df[head + names].rename(columns={n: _metric_label(n) for n in names})
         return table_json(format_report(out, decimals=1, int_cols=["연도"]))
+
+    def with_current_year(df: pd.DataFrame) -> pd.DataFrame:
+        """연도별 동기간 표 맨 위에 본년(해당 연도) 줄 추가 (v7.6) — 값은 비교표의 해당 연도와 같음"""
+        cur = {"연도": start.year, "기간": f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d}"}
+        cur.update({n: current_vals.get(n, float("nan")) for n in metric_names})
+        out = pd.concat([pd.DataFrame([cur]), df], ignore_index=True) if df is not None and not df.empty else pd.DataFrame([cur])
+        out.insert(0, "구분", ["본년" if y == start.year else ("전년" if y == prev_year else "") for y in out["연도"]])
+        return out
 
     raw_cols = ["date", "stn_id", "stn_name"] + [METRICS[n]["col"] for n in metric_names]
     # 원자료 표도 일자별로 지점 표시 순서(제주 → 서귀포 → 성산 → 고산)에 맞춤 (값은 그대로, 행 순서만 정렬)
@@ -408,7 +417,7 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
         "basis": table_json(basis.astype(str)),
         "station": table_json(station_table),
         "daily": daily_tables,
-        "recent": yearly_table(recent_df, metric_names),
+        "recent": yearly_table(with_current_year(recent_df), metric_names),
         "normal30": yearly_table(normal_yearly_df, metric_names),
         "raw": table_json(format_report(raw_df, decimals=1, int_cols=["지점번호"])),
         "dekad": dekad,

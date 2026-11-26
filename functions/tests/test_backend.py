@@ -129,7 +129,7 @@ def test_full_pipeline():
     assert abs(float(row["평년대비(비율)"]) - round(cur / nor * 100, 1)) < 1e-9
     assert all(not any("풍속" in c for c in t["columns"]) for t in [cmp_all, res["station"], res["raw"]])
     assert set(res["daily"]) == set(METRICS)
-    assert res["recent"] and len(res["recent"]["rows"]) == 5
+    assert res["recent"] and len(res["recent"]["rows"]) == 6          # v7.6: 본년 + 최근 5년
     assert res["station"]["rows"][-1][0] == "제주 전체 평균"
 
 
@@ -530,3 +530,17 @@ def test_no_info_notice_for_normal_fallbacks():
     texts = " ".join(n["text"] for n in r["notices"])
     assert "대체 계산했습니다" not in texts and "지점 평균에 넣었습니다" not in texts, texts
     assert r["stationReport"]["average"]["강우일수"]["normal"] is not None
+
+
+def test_yearly_table_includes_current_year():
+    """연도별 동기간 표: 맨 위 본년 줄(값=비교표 해당 연도), 다음 전년, 최근 5년 6줄 전체"""
+    q = pipeline.validate_request({"start": "2024-05-01", "end": "2024-05-31", "metrics": ["평균 기온", "누적 강수량"],
+                                   "stations": list(STATIONS), "source": "apihub", "normalMode": "skip",
+                                   "extreme": False, "rainZero": True})
+    r = pipeline.run_analysis(q, "KEY")
+    t = r["recent"]
+    assert t["columns"][:3] == ["구분", "연도", "기간"]
+    assert [row[1] for row in t["rows"]] == ["2024", "2023", "2022", "2021", "2020", "2019"]
+    assert t["rows"][0][0] == "본년" and t["rows"][1][0] == "전년"
+    i = t["columns"].index("누적 강수량(mm)")
+    assert abs(float(t["rows"][0][i]) - r["stationReport"]["average"]["누적 강수량"]["cur"]) < 0.06
