@@ -25,7 +25,7 @@ from .kma_api import (
     normals_for_period,
 )
 from .dekad import build_dekad_tables, build_station_month_tables, month_periods
-from .station_dekad import build_station_brief, build_station_report
+from .station_dekad import build_station_brief, build_station_report, fill_station_normals
 from .processing import (
     NORMAL_END_YEAR,
     NORMAL_START_YEAR,
@@ -233,11 +233,20 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
     normal_yearly_df = pd.DataFrame()
     normal_daily_api: Optional[pd.DataFrame] = None   # 순별 집계용: 평년값 API 일별 평년(제주 전체)
     normal_station_df: Optional[pd.DataFrame] = None  # AI 분석용: 평년값 API 지점별 일평년
+    normal_filled: List[str] = []                     # 지점 평년을 30년 실측으로 채운 항목 (v7.6)
     normal_from_years: List[str] = []                 # 순별 집계용: 30년 실측으로 평년을 계산한 지표
     if normal_mode == "api":
         report(58, "평년값(1991~2020)", "기상청 평년값 API 조회 중")
         normal_df, unmapped, normal_raw_text = normals_for_period(start, end, api_key, station_ids)
         unmapped = [n for n in unmapped if n in metric_names]   # 선택하지 않은 지표(예: 강우일수·열대야 일수)는 알림 대상에서 제외
+        # v7.6: 일부 지점만 평년이 없는 지표(성산·고산 일조 등)는 그 지점 평년을 30년 실측으로 채운 뒤 지점 평균을 냄
+        #       (채우지 않으면 평년 평균이 있는 지점만으로 계산돼 금년(전 지점 평균)과 지점 구성이 달라짐)
+        normal_df, normal_filled = fill_station_normals(
+            normal_df, start, end, metric_names, station_ids, fetch_period, normal_years,
+            prefetch_years=lambda ys: prefetch(ys, 60, 62, "평년 보완: 평년값이 없는 지점(1991~2020 실측)"))
+        if normal_filled:
+            notices.append({"level": "info", "text": "평년값 API에 없는 " + ", ".join(normal_filled) +
+                            " 평년은 1991~2020년 같은 날짜 실측 평균으로 채워 지점 평균에 넣었습니다."})
         normal_daily_api = jeju_daily_mean(normal_df)
         normal_station_df = normal_df
         normal_vals = aggregate_period(normal_daily_api, metric_names, extreme=False)
@@ -334,6 +343,8 @@ def run_analysis(req: Dict[str, Any], api_key: str, progress: Optional[ProgressF
                                          "r3": _round1(recent3_vals.get(n)), "r5": _round1(recent_vals.get(n)),
                                          "normal": _round1(normal_vals.get(n))} for n in metric_names}
         station_report["units"] = {n: METRICS[n]["unit"] for n in metric_names}
+        if normal_filled:   # 위에서 미리 채웠으므로 보고서 표 안내 문구용 목록을 여기서 넘김
+            station_report["normalFilled"] = sorted(set(station_report.get("normalFilled") or []) | set(normal_filled))
     except Exception:  # pragma: no cover - 방어용
         station_report = None
 

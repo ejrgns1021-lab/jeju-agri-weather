@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
 
 from .dekad import _slice, _year_offset_dates, dekad_periods
-from .kma_api import STATION_NAMES
+from .kma_api import METRICS, STATION_NAMES
 from .processing import aggregate_period, shift_period
 
 
@@ -118,6 +118,69 @@ def build_station_brief(start: dt.date, end: dt.date, metric_names: List[str], e
                     "period": with_normal({n: [_r(whole_cur.get(n)), whole_5.get(n)] for n in metric_names}, start, end),
                     "dekads": dekads})
     return {"metrics": list(metric_names), "years": f"{min(recent_years)}~{max(recent_years)}", "stations": out}
+
+
+# ---------------------------------------------------------------------
+# 평년값 API 지점 빈칸 보완 (v7.6): 일부 지점만 평년이 없는 지표(성산·고산 일조 등)
+# ---------------------------------------------------------------------
+def fill_station_normals(normal_df: pd.DataFrame, start: dt.date, end: dt.date, metric_names: List[str],
+                         station_ids: List[int], fetch_period: Callable[[dt.date, dt.date], pd.DataFrame],
+                         normal_years: List[int], prefetch_years: Optional[Callable[[List[int]], None]] = None,
+                         min_years: int = 20) -> tuple:
+    """평년값 API 에 어떤 지점만 빠진 지표가 있으면, 그 지점의 날짜별 평년을 1991~2020 같은 날짜 실측 평균으로 채움.
+    → 지점 평균을 낼 때 모든 선택 지점이 같은 기준으로 들어가도록(빠진 지점 때문에 평균 지점 구성이 달라지는 오류 방지).
+    지표 전체가 빠진 경우(강우일수 등)는 기존처럼 30년 실측 계산으로 따로 처리하므로 여기서는 건드리지 않음.
+    반환: (채운 normal_df, ["성산 일조 시간", ...])"""
+    if normal_df is None or normal_df.empty:
+        return normal_df, []
+    cand = [n for n in metric_names if not METRICS[n].get("derived_from") and METRICS[n]["col"] in normal_df.columns]
+    missing: Dict[int, List[str]] = {}
+    for n in cand:
+        col = METRICS[n]["col"]
+        has = {sid: bool(normal_df.loc[normal_df["stn_id"] == sid, col].notna().any()) for sid in station_ids}
+        if any(has.values()):                        # 일부 지점만 있는 지표
+            for sid, ok in has.items():
+                if not ok:
+                    missing.setdefault(sid, []).append(n)
+    if not missing:
+        return normal_df, []
+    if prefetch_years:
+        try:
+            prefetch_years(normal_years)
+        except Exception:
+            pass
+    n_days = (end - start).days + 1
+    stacks: Dict[tuple, List[List[float]]] = {}
+    for y in normal_years:
+        s_y, e_y = shift_period(start, end, y)
+        try:
+            df = fetch_period(s_y, e_y)
+        except Exception:
+            continue
+        for sid, names in missing.items():
+            sub = _station_daily(df, sid)
+            for n in names:
+                arr = [float("nan")] * n_days
+                for d, v in zip(sub.get("date", []), pd.to_numeric(sub.get(METRICS[n]["col"], pd.Series(dtype=float)), errors="coerce")):
+                    i = (d - s_y).days
+                    if 0 <= i < n_days and not pd.isna(v):
+                        arr[i] = float(v)
+                stacks.setdefault((sid, n), []).append(arr)
+    out = normal_df.copy()
+    filled: List[str] = []
+    for (sid, n), arrs in stacks.items():
+        col = METRICS[n]["col"]
+        means = []
+        for i in range(n_days):
+            vals = [a[i] for a in arrs if not math.isnan(a[i])]
+            means.append(sum(vals) / len(vals) if len(vals) >= min_years else float("nan"))
+        if all(math.isnan(v) for v in means):
+            continue
+        by_date = {start + dt.timedelta(days=i): v for i, v in enumerate(means)}
+        mask = out["stn_id"] == sid
+        out.loc[mask, col] = out.loc[mask, "date"].map(by_date)
+        filled.append(f"{STATION_NAMES.get(sid, sid)} {n}")
+    return out, filled
 
 
 # ---------------------------------------------------------------------

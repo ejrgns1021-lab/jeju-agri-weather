@@ -451,3 +451,70 @@ def test_monthly_tables():
     assert set(mo["byMetric"]["누적 강수량"]) == {"combined", "all"}
     # 순별은 그대로
     assert r["dekad"]["overview"]["columns"][0] == "순"
+
+
+def test_normals_station_gap_filled_before_average():
+    """v7.6: 평년값 API에 일부 지점(성산·고산 일조)만 빠져도 평년 평균은 선택한 모든 지점 평년의 평균이어야 함"""
+    orig = _normal_text
+
+    def no_ss(mm1, dd1, mm2, dd2):
+        out = []
+        for line in orig(mm1, dd1, mm2, dd2).split("\n"):
+            parts = line.split()
+            if len(parts) == len(DEFAULT_NORMAL_COLS) and parts[1] in ("188", "185"):
+                parts[DEFAULT_NORMAL_COLS.index("SS")] = "-9"
+                line = " ".join(parts)
+            out.append(line)
+        return "\n".join(out)
+
+    globals()["_normal_text"] = no_ss
+    kma_api.fetch_apihub_normals_raw.cache_clear()     # 앞 시험에서 기억해 둔 평년값 대신 새 응답 사용
+    try:
+        q = pipeline.validate_request({"start": "2023-06-01", "end": "2023-06-30", "metrics": ["일조 시간", "평균 기온"],
+                                       "stations": list(STATIONS), "source": "apihub", "normalMode": "api",
+                                       "extreme": False, "rainZero": True})
+        r = pipeline.run_analysis(q, "KEY")
+    finally:
+        globals()["_normal_text"] = orig
+        kma_api.fetch_apihub_normals_raw.cache_clear()
+    sr = r["stationReport"]
+    for m in ("일조 시간", "평균 기온"):
+        st = [s["values"][m]["normal"] for s in sr["stations"]]
+        assert all(v is not None for v in st)
+        assert abs(sr["average"][m]["normal"] - sum(st) / len(st)) <= 0.11, m
+    assert set(sr["normalFilled"]) == {"성산 일조 시간", "고산 일조 시간"}
+    mo = r["monthly"]["byMetric"]["일조 시간"]["all"]
+    assert abs(float(mo["rows"][0][mo["columns"].index("평년 평균")]) - sr["average"]["일조 시간"]["normal"]) <= 0.11
+
+
+def test_monthly_matches_direct_calculation():
+    """월별 값을 일별 원자료에서 직접 다시 계산해 대조: 기온=일평균의 평균, 강수=일합의 합, 최근5년=연도별 월값의 평균"""
+    q = pipeline.validate_request({"start": "2024-06-16", "end": "2024-08-10", "metrics": ["평균 기온", "누적 강수량", "열대야 일수"],
+                                   "stations": ["제주", "고산"], "source": "apihub", "normalMode": "skip",
+                                   "extreme": False, "rainZero": True})
+    r = pipeline.run_analysis(q, "KEY")
+    mo = r["monthly"]
+
+    def daily(y, s, e):
+        df, _ = kma_api.fetch_all_stations(s.replace(year=y), e.replace(year=y), "KEY", "apihub", [184, 185], True)
+        return df
+
+    months = [(dt.date(2024, 6, 16), dt.date(2024, 6, 30)), (dt.date(2024, 7, 1), dt.date(2024, 7, 31)), (dt.date(2024, 8, 1), dt.date(2024, 8, 10))]
+    cols = mo["overview"]["columns"]
+    for k, (s, e) in enumerate(months):
+        d = daily(2024, s, e)
+        per_day = d.groupby("date")[["avgTa", "sumRn", "tropicalNights"]].mean()
+        row = mo["overview"]["rows"][k]
+        assert abs(float(row[cols.index("평균 기온(℃)")]) - per_day["avgTa"].mean()) < 0.06
+        assert abs(float(row[cols.index("누적 강수량(mm)")]) - per_day["sumRn"].sum()) < 0.06
+        assert abs(float(row[cols.index("열대야 일수(일)")]) - per_day["tropicalNights"].sum()) < 0.06
+        # 최근 5년: 연도마다 같은 날짜 범위의 월값을 구한 뒤 평균 (일자료를 한데 섞어 평균내지 않음)
+        r5 = [daily(y, s, e).groupby("date")["sumRn"].mean().sum() for y in range(2019, 2024)]
+        tb = mo["byMetric"]["누적 강수량"]["all"]
+        assert abs(float(tb["rows"][k][tb["columns"].index("최근 5년 평균")]) - sum(r5) / 5) < 0.06
+    # 월 합계를 더하면 기간 합계, 월 평균기온을 일수로 가중평균하면 기간 평균
+    rain_total = sum(float(x[cols.index("누적 강수량(mm)")]) for x in mo["overview"]["rows"])
+    assert abs(rain_total - r["stationReport"]["average"]["누적 강수량"]["cur"]) < 0.2
+    days = [15, 31, 10]
+    wmean = sum(float(x[cols.index("평균 기온(℃)")]) * dd for x, dd in zip(mo["overview"]["rows"], days)) / sum(days)
+    assert abs(wmean - r["stationReport"]["average"]["평균 기온"]["cur"]) < 0.06
