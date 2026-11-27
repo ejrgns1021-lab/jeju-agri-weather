@@ -658,3 +658,5 @@ pre.raw { background: var(--surface-2); border: 1px solid var(--line); border-ra
 .rep-table td.rep-cur { font-weight: 700; }
 .rep-tools { align-items: center; }
 @media (max-width: 600px) { .rep-opts input[type="text"], .rep-title-f input[type="text"] { width: 100%; } .rep-opts .field.inline { width: 100%; } }
+
+.prefs-note { margin: 4px 0 0; }

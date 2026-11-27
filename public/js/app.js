@@ -179,8 +179,19 @@ function buildSettings() {
   if (prefs.rainZero != null) $("rain-zero").checked = prefs.rainZero;
 
   $("query-form").addEventListener("input", validateForm);
-  $("query-form").addEventListener("change", validateForm);
+  $("query-form").addEventListener("change", (ev) => {
+    validateForm();
+    // v7.6.1: 지표·지점·평년 방식·고급 옵션은 바꾸는 즉시 이 브라우저에 기억 (조회를 누르지 않아도 다음 접속 때 그대로)
+    if (ev.target && ev.target.type !== "date") savePrefs();
+  });
   validateForm();
+}
+
+/** 조회 설정 기억 (이 브라우저에만 저장 — 사람·기기마다 각자 유지, 서버에는 보내지 않음). 기간(날짜)은 매번 최근 7일로 시작 */
+function savePrefs() {
+  const q = readQuery();
+  if (!q.metrics.length || !q.stations.length) return;   // 모두 끈 상태는 기억하지 않음
+  storage.set(localStorage, PREFS_KEY, JSON.stringify({ ...q, v: PREFS_VERSION }));
 }
 
 function readQuery() {
@@ -270,7 +281,7 @@ async function onQuery(ev) {
   ev.preventDefault();
   if (!validateForm()) return;
   const q = readQuery();
-  storage.set(localStorage, PREFS_KEY, JSON.stringify({ ...q, v: PREFS_VERSION }));
+  savePrefs();
   closeSettings();
   setLoading(true, q.normalMode);
   try {
