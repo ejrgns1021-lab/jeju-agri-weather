@@ -54,6 +54,9 @@
 - 백엔드: `cd functions && python tests/test_backend.py`
   - CI에서 실패하면 배포가 중단됩니다.
   - 로컬에 google-genai가 없으면 `test_ai_models_and_settings`만 실패합니다. 이 실패는 무시해도 됩니다.
+  - **사용자 PC(Windows, ROG Ally)**: 저장소는 `C:\Users\ejrgn\jeju-agri-weather`(OneDrive 밖)에 있습니다. 시스템 `python`은 Microsoft Store 바로가기라서 실행되지 않습니다. 그래서 `uv`로 만든 `functions\.venv`(Python 3.12, git에 올라가지 않음)를 씁니다.
+    - 처음 한 번: `cd functions; uv venv --python 3.12 .venv; uv pip install --python .venv\Scripts\python.exe -r requirements.txt`
+    - 실행: `cd functions; .venv\Scripts\python.exe tests/test_backend.py`
 - 프론트: `node --check public/js/*.js`
   - 화면 확인은 Playwright로 합니다. `public/`을 `http://jeju.test`로 라우팅하고 `/api/*`는 목(mock) 응답으로 대신합니다.
   - 데스크톱(1280)과 모바일(375)에서 확인하고, 가로 스크롤(scrollWidth)이 생기지 않는지 봅니다.
@@ -62,15 +65,10 @@
 
 ## 4. 현재 상태 (2026-11-27 기준)
 
-- 라이브는 **v7.6**입니다(PR #30까지 반영).
-  - 월별 탭을 추가했습니다.
-  - 평년 평균을 보정했습니다.
-  - 정상 처리일 때의 평년 안내 문구는 숨기고, 실패 경고만 남겼습니다.
-  - 연도별 동기간 표에 본년을 넣었습니다.
-- dev에서 **v7.6.1**을 진행 중입니다. 프리뷰 확인 후 사용자 "승인"을 기다립니다.
-  - 지표·지점·평년 방식·고급 옵션을 바꾸는 즉시 브라우저(localStorage `jeju-weather-prefs`, `PREFS_VERSION=3`)에 저장합니다. 이전에는 [데이터 조회]를 누를 때만 저장했습니다.
-  - 다음 접속 때 그대로 복원합니다. 기간은 매번 최근 7일로 시작합니다.
-  - 조회 설정 아래에 안내 문구를 넣었습니다.
+- **안정 운영(유지보수) 단계**입니다. 2026-11-27부터 Claude(채팅)에서 Claude Code로 옮겨 유지보수합니다. 새 기능보다 기존 기능을 지키는 것을 우선합니다.
+- 라이브는 **v7.6.1**입니다(PR #31까지 반영). main과 dev가 같은 상태입니다.
+  - v7.6: 월별 탭, 평년 평균 보정, 정상 처리일 때 평년 안내 문구 숨김(실패 경고만 유지), 연도별 동기간 표에 본년 포함
+  - v7.6.1: 지표·지점·평년 방식·고급 옵션을 바꾸는 즉시 브라우저(localStorage `jeju-weather-prefs`, `PREFS_VERSION=3`)에 저장하고 다음 접속 때 복원합니다. 기간은 매번 최근 7일로 시작합니다. 조회 설정 아래에 안내 문구를 넣었습니다.
 - 보류·취소된 작업 (사용자가 다시 요청하기 전에는 손대지 않습니다):
   - 그래프 기능: 브랜치 `graph-wip`. 사용자가 원하는 방식이 정해지지 않아 취소했습니다.
   - AI 사용자 프롬프트 분석: 브랜치 `ai-prompt-wip`. "분석할 때마다 직접 입력" 방식으로 만들다가 보류했습니다.
